@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 
 module.exports = {
   // 服务端口
-  port: parseInt(process.env.PORT) || 3001,
+  port: parseInt(process.env.PORT) || 3002,
 
   // 数据库
   database: {
