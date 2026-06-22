@@ -86,6 +86,27 @@ async function removeParticipant(roomName, identity) {
   return svc.removeParticipant(roomName, String(identity))
 }
 
+/**
+ * 更新参会者发布权限（主持人授予/收回说话、视频、屏幕共享）。
+ * permission 为原子更新——必须把期望的全部权限一次性写齐。
+ * canPublish 为 true 且 canPublishSources 留空时，允许发布所有来源
+ * （麦克风/摄像头/屏幕共享）；为 false 时禁止任何发布，LiveKit 会自动
+ * 取消该参会者已发布的轨道，并向其推送权限变更事件。
+ * @param {string} roomName
+ * @param {string|number} identity
+ * @param {boolean} canPublish
+ */
+async function updateParticipant(roomName, identity, canPublish) {
+  const svc = getRoomService()
+  return svc.updateParticipant(roomName, String(identity), {
+    permission: {
+      canSubscribe: true,
+      canPublish: Boolean(canPublish),
+      canPublishData: true
+    }
+  })
+}
+
 let webhookReceiver = null
 function getWebhookReceiver() {
   ensureConfigured()
@@ -115,6 +136,7 @@ module.exports = {
   deleteRoom,
   listParticipants,
   removeParticipant,
+  updateParticipant,
   receiveWebhook,
   isConfigured,
   livekitUrl: url

@@ -58,17 +58,20 @@ async function joinMeeting(ctx) {
 
   // 取用户昵称作为显示名
   const user = await db.queryOne(
-    'SELECT id, nickname, username FROM users WHERE id = ? LIMIT 1',
+    'SELECT id, nickname, username, avatar FROM users WHERE id = ? LIMIT 1',
     [userId]
   )
   const displayName = user?.nickname || user?.username || ('用户' + userId)
+  const isHost = meeting.host_user_id === userId
 
+  // 权限控制：默认仅主持人有发布（说话/视频/屏幕共享）权限，
+  // 其余人 canPublish=false，需主持人手动授予后由 LiveKit 推送权限变更。
   const token = await livekit.createToken({
     roomName,
     identity: userId,
     name: displayName,
-    canPublish: true,
-    metadata: { userId, nickname: displayName }
+    canPublish: isHost,
+    metadata: { userId, nickname: displayName, avatar: user?.avatar || null }
   })
 
   // 记录/更新参会者
@@ -85,7 +88,7 @@ async function joinMeeting(ctx) {
     room_name: roomName,
     identity: String(userId),
     name: displayName,
-    is_host: meeting.host_user_id === userId
+    is_host: isHost
   })
 }
 
@@ -171,6 +174,51 @@ async function updateMeetingTitle(ctx) {
 }
 
 /**
+ * 更新成员发布权限（仅主持人）：授予/收回说话、视频、屏幕共享
+ * params: roomName
+ * body: { identity, can_publish }
+ */
+async function setParticipantPermission(ctx) {
+  if (!livekit.isConfigured()) {
+    return error(ctx, '会议服务未配置，请联系管理员', 503, 200)
+  }
+
+  const userId = ctx.state.user.userId
+  const { roomName } = ctx.params
+  const { identity, can_publish: canPublish } = ctx.request.body || {}
+
+  if (identity === undefined || identity === null || String(identity).trim() === '') {
+    return error(ctx, '缺少成员标识', 400, 200)
+  }
+
+  const meeting = await db.queryOne(
+    'SELECT * FROM meetings WHERE room_name = ? LIMIT 1',
+    [roomName]
+  )
+  if (!meeting) {
+    return error(ctx, '会议不存在', 404, 200)
+  }
+  if (meeting.host_user_id !== userId) {
+    return error(ctx, '只有主持人可以调整成员权限', 403, 200)
+  }
+  if (meeting.status === 'ended') {
+    return error(ctx, '会议已结束', 410, 200)
+  }
+
+  try {
+    await livekit.updateParticipant(roomName, identity, Boolean(canPublish))
+  } catch (e) {
+    return error(ctx, '权限更新失败，成员可能已离开会议', 400, 200)
+  }
+
+  success(ctx, {
+    room_name: roomName,
+    identity: String(identity),
+    can_publish: Boolean(canPublish)
+  })
+}
+
+/**
  * 结束会议（仅主持人）
  * params: roomName
  */
@@ -250,6 +298,7 @@ module.exports = {
   joinMeeting,
   getMeeting,
   updateMeetingTitle,
+  setParticipantPermission,
   endMeeting,
   webhook
 }

@@ -15,6 +15,8 @@ router.post('/:roomName/token', auth, meetingController.joinMeeting)
 router.get('/:roomName', auth, meetingController.getMeeting)
 // 修改会议主题（仅主持人）
 router.put('/:roomName', auth, meetingController.updateMeetingTitle)
+// 更新成员发布权限（仅主持人）：授予/收回说话、视频、屏幕共享
+router.post('/:roomName/permission', auth, meetingController.setParticipantPermission)
 // 结束会议（仅主持人）
 router.post('/:roomName/end', auth, meetingController.endMeeting)
 
