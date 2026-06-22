@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS documents (
     filename VARCHAR(255),
     original_name VARCHAR(255),
     file_url VARCHAR(500),
-    file_type VARCHAR(50),
+    file_type VARCHAR(100),
     file_size BIGINT,
     parse_status VARCHAR(20) DEFAULT 'pending',
     parse_result LONGTEXT,
@@ -154,8 +154,27 @@ ALTER TABLE documents
     ADD COLUMN IF NOT EXISTS knowledge_base_id BIGINT NULL AFTER user_id,
     ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE AFTER parse_status,
     ADD COLUMN IF NOT EXISTS metadata JSON DEFAULT NULL AFTER parse_result,
+    ADD COLUMN IF NOT EXISTS chunk_count INT DEFAULT 0 AFTER parse_status,
+    ADD COLUMN IF NOT EXISTS parse_error TEXT DEFAULT NULL AFTER chunk_count,
+    ADD COLUMN IF NOT EXISTS parsed_at TIMESTAMP NULL AFTER parse_error,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     ADD INDEX idx_kb (knowledge_base_id);
+
+-- 文档分块表（存储切块文本 + embedding 向量）
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL,
+    knowledge_base_id BIGINT NULL,
+    chunk_index INT NOT NULL DEFAULT 0,
+    content MEDIUMTEXT NOT NULL,
+    token_count INT DEFAULT 0,
+    embedding MEDIUMTEXT NULL COMMENT 'JSON 数组形式的向量',
+    embedding_dim INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_document (document_id),
+    INDEX idx_kb (knowledge_base_id),
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS model_providers (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -225,5 +244,5 @@ CREATE TABLE IF NOT EXISTS voice_providers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO voice_providers (provider, name, api_key, base_url, realtime_model, default_voice, is_active, is_current, sort_order)
-VALUES ('qwen', '阿里百炼实时多模态', '', 'wss://dashscope.aliyuncs.com', 'qwen3.5-omni-plus-realtime', 'zhiyan', TRUE, TRUE, 0)
+VALUES ('qwen', '阿里百炼实时多模态', '', 'wss://dashscope.aliyuncs.com', 'qwen3.5-omni-plus-realtime', 'Tina', TRUE, TRUE, 0)
 ON DUPLICATE KEY UPDATE name = name;

@@ -1,19 +1,20 @@
 const VoiceCallAdapter = require('./adapter-base')
+const logger = require('../../utils/logger')
 
 /**
  * Gemini Live API 适配器
  *
  * Gemini Live 协议要点：
  * - WebSocket 地址：wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={API_KEY}
- * - 模型、音色在首个 setup 消息里配置
+ * - 模型、音色在首个 setup 消息里配置，连接成功后必须立即发送
  * - 客户端音频通过 realtimeInput.mediaChunks 发送
  * - 服务端返回 serverContent.modelTurn.parts（含 audio/pcm）
  * - 输入采样率 16kHz，输出采样率 24kHz（与预设一致）
  *
  * 为兼容前端 OpenAI Realtime 流程：
- * - 收到首个 session.update → 转为 setup 消息发送
+ * - 连接建立后立即发送 Gemini setup 消息（使用后台配置的 default_voice）
+ * - 同时伪造 session.created，让前端开始发送音频
  * - input_audio_buffer.append → realtimeInput
- * - setupComplete → session.created（让前端继续发送配置并开始录音）
  * - serverContent.modelTurn.parts 音频 → response.audio.delta
  * - serverContent.turnComplete → response.done
  */
@@ -21,12 +22,34 @@ class GeminiLiveAdapter extends VoiceCallAdapter {
   constructor(config, preset) {
     super(config, preset)
     this._setupSent = false
-    this._pendingSetup = null
   }
 
   async connect() {
     const url = `${this.baseUrl}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(this.apiKey)}`
+    logger.info(`[GeminiAdapter] 连接上游: ${url}`)
     return new (require('ws'))(url)
+  }
+
+  /**
+   * 向上游发送初始 setup 消息（在上游 WebSocket open 后立即调用）
+   */
+  sendSetup(upstreamWs) {
+    if (this._setupSent) return
+    const voice = this.config.default_voice || this.preset.voices[0] || 'Puck'
+    const setup = this._buildSetup(voice)
+    upstreamWs.send(JSON.stringify(setup))
+    this._setupSent = true
+  }
+
+  /**
+   * Gemini 不会主动发送 session.created，需要后端伪造一个，
+   * 让前端按 OpenAI 流程开始录音并发送音频。
+   */
+  getConnectionEstablishedEvents() {
+    return [{
+      payload: JSON.stringify({ type: 'session.created', session: { id: 'gemini-live-session' } }),
+      isBinary: false
+    }]
   }
 
   translateClientEvent(event) {
@@ -36,15 +59,8 @@ class GeminiLiveAdapter extends VoiceCallAdapter {
 
     const type = event.type
 
-    // 首个 session.update 转为 setup
+    // session.update：Gemini 已在连接建立时发送 setup，不支持运行时改音色，忽略
     if (type === 'session.update') {
-      const setup = this._buildSetup(event)
-      this._setupSent = true
-      return [{ payload: JSON.stringify(setup), isBinary: false }]
-    }
-
-    // 后续再收到 session.update：Gemini 不支持运行时改音色，忽略
-    if (type === 'session.update' && this._setupSent) {
       return []
     }
 
@@ -59,10 +75,10 @@ class GeminiLiveAdapter extends VoiceCallAdapter {
       return [{
         payload: JSON.stringify({
           realtimeInput: {
-            mediaChunks: [{
+            audio: {
               mimeType: 'audio/pcm;rate=16000',
               data: audio
-            }]
+            }
           }
         }),
         isBinary: false
@@ -96,11 +112,10 @@ class GeminiLiveAdapter extends VoiceCallAdapter {
       const event = JSON.parse(text)
       const results = []
 
+      // setupComplete 是 Gemini 对 setup 的确认，后端已提前伪造 session.created，
+      // 这里直接忽略，避免以 unknown-json 透传给客户端。
       if (event.setupComplete !== undefined) {
-        results.push({
-          payload: JSON.stringify({ type: 'session.created', session: { id: 'gemini-live-session' } }),
-          isBinary: false
-        })
+        return []
       }
 
       if (event.serverContent) {
@@ -164,10 +179,7 @@ class GeminiLiveAdapter extends VoiceCallAdapter {
     return [{ payload: data, isBinary: Buffer.isBuffer(data) }]
   }
 
-  _buildSetup(sessionUpdateEvent) {
-    const session = sessionUpdateEvent.session || {}
-    const voice = session.voice || this.config.default_voice || this.preset.voices[0] || 'Puck'
-
+  _buildSetup(voice) {
     return {
       setup: {
         model: this.realtimeModel,

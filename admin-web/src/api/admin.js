@@ -64,6 +64,12 @@ export default {
   updateDocument(id, data) {
     return request.put(`/documents/${id}`, data)
   },
+  getDocumentChunks(id, params) {
+    return request.get(`/documents/${id}/chunks`, { params })
+  },
+  searchKnowledgeBase(kbId, data) {
+    return request.post(`/knowledge-bases/${kbId}/search`, data)
+  },
 
   // 模型 Provider 配置
   getProviderPresets() {

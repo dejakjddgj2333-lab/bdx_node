@@ -1,4 +1,5 @@
 const OpenAIRealtimeAdapter = require('./openai-adapter')
+const logger = require('../../utils/logger')
 
 /**
  * 豆包实时语音适配器（火山方舟Realtime API）
@@ -15,6 +16,7 @@ const OpenAIRealtimeAdapter = require('./openai-adapter')
 class DoubaoRealtimeAdapter extends OpenAIRealtimeAdapter {
   async connect() {
     const url = `${this.baseUrl}/api/v3/realtime?model=${encodeURIComponent(this.realtimeModel)}`
+    logger.info(`[DoubaoAdapter] 连接上游: ${url}`)
     const headers = {
       Authorization: `Bearer ${this.apiKey}`
     }

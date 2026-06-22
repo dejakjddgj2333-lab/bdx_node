@@ -1,5 +1,6 @@
 const WebSocket = require('ws')
 const VoiceCallAdapter = require('./adapter-base')
+const logger = require('../../utils/logger')
 
 /**
  * OpenAI Realtime API 适配器
@@ -8,6 +9,7 @@ const VoiceCallAdapter = require('./adapter-base')
 class OpenAIRealtimeAdapter extends VoiceCallAdapter {
   async connect() {
     const url = `${this.baseUrl}/v1/realtime?model=${encodeURIComponent(this.realtimeModel)}`
+    logger.info(`[OpenAIAdapter] 连接上游: ${url}`)
     const headers = {
       Authorization: `Bearer ${this.apiKey}`,
       'OpenAI-Beta': 'realtime=v1'

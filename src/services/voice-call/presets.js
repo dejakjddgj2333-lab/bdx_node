@@ -18,6 +18,14 @@ const VOICE_PROVIDER_PRESETS = {
       nova: '新星',
       shimmer: '微光'
     },
+    voice_intros: {
+      alloy: '中性自然，适合日常对话',
+      echo: '成熟稳重男声',
+      fable: '明亮清晰女声',
+      onyx: '低沉有力男声',
+      nova: '活泼亲和女声',
+      shimmer: '年轻温柔女声'
+    },
     input_sample_rate: 24000,
     output_sample_rate: 24000
   },
@@ -25,13 +33,32 @@ const VOICE_PROVIDER_PRESETS = {
     name: 'Gemini Live',
     base_url: 'wss://generativelanguage.googleapis.com',
     realtime_model: 'models/gemini-3.1-flash-live-preview',
-    voices: ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede'],
+    // Gemini 语音合成官方音色列表：
+    // https://ai.google.dev/gemini-api/docs/interactions/speech-generation?hl=zh-cn#voices
+    voices: ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Zephyr', 'Leda', 'Orus', 'Callirrhoe', 'Algieba'],
     voice_labels: {
       Puck: '帕克',
       Charon: '卡戎',
       Kore: '科瑞',
       Fenrir: '芬里尔',
-      Aoede: '阿欧德'
+      Aoede: '阿欧德',
+      Zephyr: '泽菲尔',
+      Leda: '勒达',
+      Orus: '奥鲁斯',
+      Callirrhoe: '卡利罗厄',
+      Algieba: '阿尔吉巴'
+    },
+    voice_intros: {
+      Puck: '默认女声，清晰自然',
+      Charon: '低沉磁性男声',
+      Kore: '年轻活泼女声',
+      Fenrir: '浑厚有力男声',
+      Aoede: '抒情柔和女声',
+      Zephyr: '轻快明亮女声',
+      Leda: '温暖亲和女声',
+      Orus: '沉稳成熟男声',
+      Callirrhoe: '清脆悦耳女声',
+      Algieba: '柔和叙事女声'
     },
     input_sample_rate: 16000,
     output_sample_rate: 24000
@@ -47,6 +74,12 @@ const VOICE_PROVIDER_PRESETS = {
       zhiyan_yunjian: '知言 · 云健',
       zhiyan_boy: '知言 · 男孩'
     },
+    voice_intros: {
+      zhiyan_lily: '温柔亲切女声',
+      zhiyan_yunxi: '知性沉稳女声',
+      zhiyan_yunjian: '成熟稳重男声',
+      zhiyan_boy: '阳光少年男声'
+    },
     input_sample_rate: 16000,
     output_sample_rate: 16000
   },
@@ -54,11 +87,28 @@ const VOICE_PROVIDER_PRESETS = {
     name: '阿里百炼实时多模态',
     base_url: 'wss://dashscope.aliyuncs.com',
     realtime_model: config.ai.qwen.realtimeModel || 'qwen3.5-omni-plus-realtime',
-    voices: ['zhiyan', 'xiaogang', 'xiaomei'],
+    // 音色取自 Qwen3.5-Omni-Realtime 系列官方列表：
+    // https://help.aliyun.com/zh/model-studio/omni-voice-list
+    voices: ['Tina', 'Cindy', 'Serena', 'Ethan', 'Raymond', 'Qiao', 'Momo', 'Li'],
     voice_labels: {
-      zhiyan: '知言',
-      xiaogang: '小刚',
-      xiaomei: '小美'
+      Tina: 'Tina',
+      Cindy: 'Cindy',
+      Serena: 'Serena',
+      Ethan: 'Ethan',
+      Raymond: 'Raymond',
+      Qiao: 'Qiao',
+      Momo: 'Momo',
+      Li: 'Li'
+    },
+    voice_intros: {
+      Tina: '默认女声，自然清晰',
+      Cindy: '活泼轻快女声',
+      Serena: '沉稳优雅女声',
+      Ethan: '沉稳自然男声',
+      Raymond: '成熟磁性男声',
+      Qiao: '亲和中文女声',
+      Momo: '可爱灵动女声',
+      Li: '自然偏低男声'
     },
     input_sample_rate: 24000,
     output_sample_rate: 24000

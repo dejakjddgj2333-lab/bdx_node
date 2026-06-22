@@ -67,10 +67,118 @@ async function initAiModelsColumns() {
   }
 }
 
+async function initDocumentColumns() {
+  const columns = [
+    { name: 'chunk_count', ddl: 'INT DEFAULT 0' },
+    { name: 'parse_error', ddl: 'TEXT DEFAULT NULL' },
+    { name: 'parsed_at', ddl: 'TIMESTAMP NULL' }
+  ]
+  for (const col of columns) {
+    if (await columnExists('documents', col.name)) {
+      continue
+    }
+    try {
+      await db.query(`ALTER TABLE documents ADD COLUMN \`${col.name}\` ${col.ddl}`)
+      logger.info(`[DB-Init] documents.${col.name} 添加成功`)
+    } catch (e) {
+      logger.error(`[DB-Init] documents.${col.name} 创建失败:`, e.message)
+    }
+  }
+
+  // file_type 需容纳较长 mime（如 docx 的 65 字符）
+  try {
+    const col = (await db.queryRaw("SHOW COLUMNS FROM documents LIKE 'file_type'"))[0]
+    if (col && /varchar\((\d+)\)/i.test(col.Type)) {
+      const len = parseInt(RegExp.$1, 10)
+      if (len < 100) {
+        await db.query('ALTER TABLE documents MODIFY COLUMN file_type VARCHAR(100)')
+        logger.info('[DB-Init] documents.file_type 扩展为 VARCHAR(100)')
+      }
+    }
+  } catch (e) {
+    logger.error('[DB-Init] documents.file_type 调整失败:', e.message)
+  }
+}
+
+async function initDocumentChunks() {
+  if (await tableExists('document_chunks')) {
+    return
+  }
+  logger.info('[DB-Init] 创建 document_chunks 表')
+  try {
+    await db.query(`
+      CREATE TABLE document_chunks (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        document_id BIGINT NOT NULL,
+        knowledge_base_id BIGINT NULL,
+        chunk_index INT NOT NULL DEFAULT 0,
+        content MEDIUMTEXT NOT NULL,
+        token_count INT DEFAULT 0,
+        embedding MEDIUMTEXT NULL COMMENT 'JSON 数组形式的向量',
+        embedding_dim INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_document (document_id),
+        INDEX idx_kb (knowledge_base_id),
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    logger.info('[DB-Init] document_chunks 表创建成功')
+  } catch (e) {
+    logger.error('[DB-Init] document_chunks 表创建失败:', e.message)
+  }
+}
+
+async function initMeetings() {
+  if (!(await tableExists('meetings'))) {
+    logger.info('[DB-Init] 创建 meetings 表')
+    try {
+      await db.query(`
+        CREATE TABLE meetings (
+          id BIGINT PRIMARY KEY AUTO_INCREMENT,
+          room_name VARCHAR(64) NOT NULL UNIQUE COMMENT 'LiveKit 房间名',
+          title VARCHAR(200) NOT NULL DEFAULT '会议',
+          host_user_id BIGINT NOT NULL COMMENT '主持人用户ID',
+          status VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT 'active/ended',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          ended_at TIMESTAMP NULL,
+          INDEX idx_host (host_user_id),
+          INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `)
+      logger.info('[DB-Init] meetings 表创建成功')
+    } catch (e) {
+      logger.error('[DB-Init] meetings 表创建失败:', e.message)
+    }
+  }
+
+  if (!(await tableExists('meeting_participants'))) {
+    logger.info('[DB-Init] 创建 meeting_participants 表')
+    try {
+      await db.query(`
+        CREATE TABLE meeting_participants (
+          id BIGINT PRIMARY KEY AUTO_INCREMENT,
+          meeting_id BIGINT NOT NULL,
+          user_id BIGINT NOT NULL,
+          joined_at TIMESTAMP NULL,
+          left_at TIMESTAMP NULL,
+          UNIQUE KEY uniq_meeting_user (meeting_id, user_id),
+          INDEX idx_meeting (meeting_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `)
+      logger.info('[DB-Init] meeting_participants 表创建成功')
+    } catch (e) {
+      logger.error('[DB-Init] meeting_participants 表创建失败:', e.message)
+    }
+  }
+}
+
 async function init() {
   try {
     await initPromptSuggestions()
     await initAiModelsColumns()
+    await initDocumentColumns()
+    await initDocumentChunks()
+    await initMeetings()
     logger.info('[DB-Init] 数据库初始化完成')
   } catch (e) {
     logger.error('[DB-Init] 数据库初始化失败:', e.message || e)

@@ -56,6 +56,20 @@ class VoiceCallWebSocket {
       return
     }
 
+    // App 端可通过 URL 参数传入选中的音色，优先使用 App 端选择
+    // 若传入音色不在当前厂商预设列表中，则回退到当前厂商默认音色
+    if (query.voice) {
+      const validVoices = providerConfig.preset?.voices || []
+      if (validVoices.includes(query.voice)) {
+        providerConfig.default_voice = query.voice
+        logger.info(`[VoiceCall] App 传入音色: ${query.voice}`)
+      } else {
+        const fallbackVoice = providerConfig.default_voice || validVoices[0] || ''
+        providerConfig.default_voice = fallbackVoice
+        logger.warn(`[VoiceCall] App 传入音色 ${query.voice} 不属于 ${providerConfig.provider}，已回退到 ${fallbackVoice}`)
+      }
+    }
+
     if (!providerConfig.api_key) {
       logger.error(`[VoiceCall] 未配置 ${providerConfig.provider} API Key`)
       clientWs.close(4003, '语音服务未配置')
@@ -67,11 +81,23 @@ class VoiceCallWebSocket {
     let upstreamWs
     try {
       adapter = createVoiceAdapter(providerConfig)
+      logger.info(`[VoiceCall] Adapter 创建成功: ${providerConfig.provider}`)
+
+      // 某些厂商（如 Gemini）不会主动发 session.created，需要后端先伪造一个，
+      // 让前端按 OpenAI 流程发送 session.update。这些消息会被缓冲到上游就绪后发送。
+      const initialEvents = adapter.getConnectionEstablishedEvents()
+      if (initialEvents.length > 0) {
+        logger.info(`[VoiceCall] 发送初始事件给客户端: ${userId}, count=${initialEvents.length}`)
+        for (const msg of initialEvents) {
+          this.safeSendClient(clientWs, msg.payload)
+        }
+      }
+
       upstreamWs = await adapter.connect()
       logger.info(`[VoiceCall] 正在连接 ${providerConfig.provider}: ${providerConfig.realtime_model}`)
     } catch (err) {
-      logger.error(`[VoiceCall] 创建 ${providerConfig.provider} 连接失败:`, err.message)
-      logger.error(`[VoiceCall] 错误堆栈:`, err.stack)
+      const errInfo = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack}` : String(err)
+      logger.error(`[VoiceCall] 创建 ${providerConfig.provider} 连接失败: ${errInfo}`)
       clientWs.close(4003, '无法连接语音服务')
       return
     }
@@ -109,6 +135,17 @@ class VoiceCallWebSocket {
         upstreamWs.once('open', () => {
           clearTimeout(timeout)
           logger.info(`[VoiceCall] ${providerConfig.provider} 连接成功`)
+
+          // 某些厂商（如 Gemini）要求连接成功后立即发送初始 setup 消息
+          if (typeof adapter.sendSetup === 'function') {
+            try {
+              adapter.sendSetup(upstreamWs)
+              logger.info(`[VoiceCall] ${providerConfig.provider} setup 消息已发送`)
+            } catch (setupErr) {
+              logger.error(`[VoiceCall] ${providerConfig.provider} setup 消息发送失败:`, setupErr.message)
+            }
+          }
+
           resolve()
         })
 

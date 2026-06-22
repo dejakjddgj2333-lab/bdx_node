@@ -75,6 +75,14 @@ class VoiceCallAdapter {
   }
 
   /**
+   * 连接建立后应立即发给客户端的事件列表（用于协议不主动推送 session.created 的厂商）
+   * @returns {Array<{payload: string|Buffer, isBinary: boolean}>}
+   */
+  getConnectionEstablishedEvents() {
+    return []
+  }
+
+  /**
    * 辅助：把前端 16kHz 音频重采样到上游所需采样率
    * @param {string} base64Audio base64 PCM16 16kHz mono
    * @returns {string} base64 PCM16 目标采样率 mono

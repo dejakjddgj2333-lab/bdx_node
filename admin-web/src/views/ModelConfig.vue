@@ -48,7 +48,7 @@
               class="inline-select"
               @change="updateVoiceProvider(row, { default_voice: $event.target.value })"
             >
-              <option v-for="v in row.voices" :key="v" :value="v">{{ row.voice_labels?.[v] || v }}</option>
+              <option v-for="v in row.voices" :key="v" :value="v" :title="row.voice_intros?.[v]">{{ row.voice_labels?.[v] || v }}</option>
             </select>
           </span>
           <span v-else-if="column.key === 'actions'" class="actions">
@@ -201,7 +201,8 @@
         <div class="form-group">
           <label>默认音色</label>
           <select v-model="voiceProviderForm.default_voice">
-            <option v-for="v in voiceProviderForm._voices" :key="v" :value="v">
+            <option v-for="v in voiceProviderForm._voices" :key="v" :value="v"
+              :title="voiceProviderPresets[voiceProviderForm.provider]?.voice_intros?.[v]">
               {{ voiceProviderPresets[voiceProviderForm.provider]?.voice_labels?.[v] || v }}
             </option>
           </select>

@@ -30,6 +30,7 @@ async function getCurrentProvider(ctx) {
     realtime_model: realtimeModel,
     voices,
     voice_labels: preset.voice_labels || {},
+    voice_intros: preset.voice_intros || {},
     default_voice: defaultVoice
   })
 }

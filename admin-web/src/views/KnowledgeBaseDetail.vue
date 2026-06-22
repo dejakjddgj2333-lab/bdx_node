@@ -6,17 +6,23 @@
         <h1 class="page-title">{{ kbName }}</h1>
       </div>
       <div class="toolbar">
+        <GlowButton variant="secondary" @click="openSearch">检索测试</GlowButton>
         <input ref="fileInput" type="file" hidden @change="handleFileChange" />
         <GlowButton :loading="uploading" @click="$refs.fileInput.click()">上传文档</GlowButton>
       </div>
     </div>
 
+    <p class="hint">支持 txt / md / PDF / Word(.docx)。上传后自动解析、切块并生成向量。</p>
+
     <GlassCard>
       <DataTable :columns="columns" :data="documents" :loading="loading">
         <template #cell="{ column, row }">
           <span v-if="column.key === 'file_size'">{{ formatSize(row.file_size) }}</span>
+          <span v-else-if="column.key === 'chunk_count'">{{ row.chunk_count || 0 }}</span>
           <span v-else-if="column.key === 'parse_status'">
-            <span :class="['badge', statusClass(row.parse_status)]">{{ statusText(row.parse_status) }}</span>
+            <span :class="['badge', statusClass(row.parse_status)]" :title="row.parse_error || ''">
+              {{ statusText(row.parse_status) }}
+            </span>
           </span>
           <span v-else-if="column.key === 'is_public'">
             <label class="switch">
@@ -30,6 +36,11 @@
           </span>
           <span v-else-if="column.key === 'created_at'">{{ formatDate(row.created_at) }}</span>
           <span v-else-if="column.key === 'actions'" class="actions">
+            <button
+              class="action-btn"
+              :disabled="!row.chunk_count"
+              @click="openChunks(row)"
+            >分块</button>
             <button class="action-btn" @click="handleReparse(row)">重新解析</button>
             <button class="action-btn action-btn--danger" @click="handleDelete(row)">删除</button>
           </span>
@@ -51,31 +62,84 @@
         >下一页</button>
       </div>
     </GlassCard>
+
+    <!-- 分块查看弹窗 -->
+    <Modal v-model:visible="chunkModal.visible" :title="`分块详情 - ${chunkModal.name}`" width="760px">
+      <div v-if="chunkModal.loading" class="modal-loading">加载中...</div>
+      <div v-else-if="chunkModal.list.length === 0" class="modal-empty">暂无分块</div>
+      <div v-else class="chunk-list">
+        <div v-for="c in chunkModal.list" :key="c.id" class="chunk-item">
+          <div class="chunk-item__head">
+            <span class="chunk-item__idx">#{{ c.chunk_index }}</span>
+            <span class="chunk-item__meta">{{ c.token_count }} 字 · {{ c.embedding_dim }} 维</span>
+          </div>
+          <div class="chunk-item__content">{{ c.content }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="footer-info">共 {{ chunkModal.total }} 块</span>
+        <GlowButton variant="secondary" @click="chunkModal.visible = false">关闭</GlowButton>
+      </template>
+    </Modal>
+
+    <!-- 检索测试弹窗 -->
+    <Modal v-model:visible="searchModal.visible" title="知识库检索测试" width="720px">
+      <div class="search-form">
+        <textarea
+          v-model="searchModal.query"
+          class="search-input"
+          rows="3"
+          placeholder="输入一个问题，测试能否从知识库检索到相关分块..."
+        />
+        <div class="search-params">
+          <label>TopK
+            <input v-model.number="searchModal.topK" type="number" min="1" max="20" class="num-input" />
+          </label>
+          <label>最低分
+            <input v-model.number="searchModal.minScore" type="number" min="0" max="1" step="0.05" class="num-input" />
+          </label>
+          <GlowButton :loading="searchModal.loading" @click="runSearch">检索</GlowButton>
+        </div>
+      </div>
+
+      <div v-if="searchModal.searched" class="search-results">
+        <div v-if="searchModal.results.length === 0" class="modal-empty">未检索到相关内容</div>
+        <div v-for="(r, i) in searchModal.results" :key="r.id" class="result-item">
+          <div class="result-item__head">
+            <span class="result-rank">Top {{ i + 1 }}</span>
+            <span class="result-score">相似度 {{ r.score.toFixed(4) }}</span>
+            <span class="result-doc">{{ r.document_name }} #{{ r.chunk_index }}</span>
+          </div>
+          <div class="result-item__content">{{ r.content }}</div>
+        </div>
+      </div>
+    </Modal>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, reactive, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import adminApi from '@/api/admin'
 import GlassCard from '@/components/GlassCard.vue'
 import DataTable from '@/components/DataTable.vue'
 import GlowButton from '@/components/GlowButton.vue'
+import Modal from '@/components/Modal.vue'
 
 const route = useRoute()
-const router = useRouter()
 const kbId = computed(() => route.params.id)
 const kbName = ref('知识库详情')
 
 const columns = [
   { key: 'id', title: 'ID', width: '70px' },
   { key: 'original_name', title: '文件名' },
-  { key: 'file_type', title: '类型', width: '120px' },
-  { key: 'file_size', title: '大小', width: '100px' },
-  { key: 'parse_status', title: '解析状态', width: '110px', align: 'center' },
-  { key: 'is_public', title: '公开', width: '80px', align: 'center' },
-  { key: 'created_at', title: '上传时间', width: '160px' },
-  { key: 'actions', title: '操作', width: '160px', align: 'center' }
+  { key: 'file_type', title: '类型', width: '110px' },
+  { key: 'file_size', title: '大小', width: '90px' },
+  { key: 'chunk_count', title: '分块', width: '70px', align: 'center' },
+  { key: 'parse_status', title: '解析状态', width: '100px', align: 'center' },
+  { key: 'is_public', title: '公开', width: '70px', align: 'center' },
+  { key: 'created_at', title: '上传时间', width: '150px' },
+  { key: 'actions', title: '操作', width: '200px', align: 'center' }
 ]
 
 const documents = ref([])
@@ -88,6 +152,26 @@ const pagination = reactive({
   total: 0,
   totalPages: 0
 })
+
+const chunkModal = reactive({
+  visible: false,
+  loading: false,
+  name: '',
+  list: [],
+  total: 0
+})
+
+const searchModal = reactive({
+  visible: false,
+  loading: false,
+  searched: false,
+  query: '',
+  topK: 5,
+  minScore: 0.2,
+  results: []
+})
+
+let pollTimer = null
 
 function formatSize(bytes) {
   if (!bytes) return '-'
@@ -144,10 +228,23 @@ async function loadDocuments() {
     documents.value = res.list
     pagination.total = res.pagination.total
     pagination.totalPages = res.pagination.totalPages
+    schedulePoll()
   } catch (e) {
     alert(e.message)
   } finally {
     loading.value = false
+  }
+}
+
+// 若有文档处于 pending/parsing，定时刷新状态
+function schedulePoll() {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  const hasPending = documents.value.some(d => ['pending', 'parsing'].includes(d.parse_status))
+  if (hasPending) {
+    pollTimer = setTimeout(() => loadDocuments(), 3000)
   }
 }
 
@@ -184,7 +281,6 @@ async function handleDelete(row) {
 async function handleReparse(row) {
   try {
     await adminApi.reparseDocument(row.id)
-    alert('已重新加入解析队列')
     loadDocuments()
   } catch (e) {
     alert(e.message)
@@ -197,6 +293,49 @@ async function togglePublic(row, val) {
     row.is_public = val
   } catch (e) {
     alert(e.message)
+  }
+}
+
+async function openChunks(row) {
+  chunkModal.visible = true
+  chunkModal.loading = true
+  chunkModal.name = row.original_name
+  chunkModal.list = []
+  try {
+    const res = await adminApi.getDocumentChunks(row.id, { pageSize: 100 })
+    chunkModal.list = res.list
+    chunkModal.total = res.pagination.total
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    chunkModal.loading = false
+  }
+}
+
+function openSearch() {
+  searchModal.visible = true
+  searchModal.searched = false
+  searchModal.results = []
+}
+
+async function runSearch() {
+  if (!searchModal.query.trim()) {
+    alert('请输入查询内容')
+    return
+  }
+  searchModal.loading = true
+  try {
+    const res = await adminApi.searchKnowledgeBase(kbId.value, {
+      query: searchModal.query.trim(),
+      topK: searchModal.topK,
+      minScore: searchModal.minScore
+    })
+    searchModal.results = res.results || []
+    searchModal.searched = true
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    searchModal.loading = false
   }
 }
 
@@ -213,6 +352,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+}
+
+.hint {
+  margin: 8px 0 16px;
+  font-size: 13px;
+  color: $text-tertiary;
 }
 
 .back-btn {
@@ -250,6 +400,11 @@ onMounted(() => {
 
   &:hover {
     background: rgba($primary, 0.15);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   &--danger {
@@ -338,5 +493,159 @@ onMounted(() => {
   input:checked + &__slider::before {
     transform: translateX(20px);
   }
+}
+
+.modal-loading,
+.modal-empty {
+  text-align: center;
+  color: $text-tertiary;
+  padding: 32px 0;
+  font-size: 14px;
+}
+
+.chunk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+
+.chunk-item {
+  border: 1px solid $border-subtle;
+  border-radius: $radius-md;
+  padding: 12px 14px;
+  background: $bg-elevated;
+
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  &__idx {
+    font-weight: 600;
+    color: $primary;
+    font-size: 13px;
+  }
+
+  &__meta {
+    font-size: 12px;
+    color: $text-tertiary;
+  }
+
+  &__content {
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.footer-info {
+  margin-right: auto;
+  font-size: 13px;
+  color: $text-tertiary;
+}
+
+.search-form {
+  margin-bottom: 16px;
+}
+
+.search-input {
+  width: 100%;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: $text;
+  background: $bg-elevated;
+  resize: vertical;
+  font-family: inherit;
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+  }
+}
+
+.search-params {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: $text-secondary;
+  }
+}
+
+.num-input {
+  width: 64px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: $text;
+  background: $bg-elevated;
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+  }
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 50vh;
+  overflow-y: auto;
+  border-top: 1px solid $border-subtle;
+  padding-top: 16px;
+}
+
+.result-item {
+  border: 1px solid $border-subtle;
+  border-radius: $radius-md;
+  padding: 12px 14px;
+  background: $bg-elevated;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  &__content {
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.result-rank {
+  font-weight: 600;
+  color: $primary;
+  font-size: 13px;
+}
+
+.result-score {
+  font-size: 12px;
+  color: $success;
+}
+
+.result-doc {
+  font-size: 12px;
+  color: $text-tertiary;
 }
 </style>

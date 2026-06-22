@@ -23,6 +23,7 @@ router.get('/knowledge-bases', adminAuth, adminController.listKnowledgeBases)
 router.post('/knowledge-bases', adminAuth, adminController.createKnowledgeBase)
 router.put('/knowledge-bases/:id', adminAuth, adminController.updateKnowledgeBase)
 router.delete('/knowledge-bases/:id', adminAuth, adminController.deleteKnowledgeBase)
+router.post('/knowledge-bases/:id/search', adminAuth, adminController.searchKnowledgeBase)
 
 // 文档管理
 router.get('/knowledge-bases/:id/documents', adminAuth, adminController.listDocuments)
@@ -30,6 +31,7 @@ router.post('/knowledge-bases/:id/documents', adminAuth, adminController.knowled
 router.delete('/documents/:id', adminAuth, adminController.deleteDocument)
 router.put('/documents/:id', adminAuth, adminController.updateDocument)
 router.post('/documents/:id/reparse', adminAuth, adminController.reparseDocument)
+router.get('/documents/:id/chunks', adminAuth, adminController.listDocumentChunks)
 
 // 模型 Provider 配置
 router.get('/model-provider-presets', adminAuth, adminController.listProviderPresets)

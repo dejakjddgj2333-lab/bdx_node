@@ -5,6 +5,8 @@ const multer = require('koa-multer')
 const WebSocket = require('ws')
 const config = require('../config')
 const db = require('../utils/db')
+const documentService = require('../services/document.service')
+const retrievalService = require('../services/retrieval.service')
 
 // 内置 Provider 预设（标识 / 名称 / Base URL 固定）
 const PROVIDER_PRESETS = {
@@ -33,7 +35,8 @@ function formatVoiceProvider(row) {
     hasKey: !!row.api_key,
     api_key: undefined,
     voices: preset?.voices || [],
-    voice_labels: preset?.voice_labels || {}
+    voice_labels: preset?.voice_labels || {},
+    voice_intros: preset?.voice_intros || {}
   }
 }
 
@@ -481,7 +484,7 @@ async function listDocuments(ctx) {
 
   const list = await db.queryRaw(
     `SELECT id, original_name, file_type, file_size, file_url, parse_status,
-            is_public, metadata, created_at, updated_at
+            chunk_count, parse_error, is_public, metadata, created_at, updated_at, parsed_at
      FROM documents
      WHERE knowledge_base_id = ?
      ORDER BY id DESC
@@ -541,7 +544,10 @@ async function uploadDocument(ctx) {
     originalName
   })
 
-  success(ctx, { id: docId }, '上传成功')
+  // 异步触发解析 → 切块 → embedding → 入库
+  documentService.processDocumentAsync(docId)
+
+  success(ctx, { id: docId }, '上传成功，正在后台解析')
 }
 
 async function deleteDocument(ctx) {
@@ -576,11 +582,81 @@ async function reparseDocument(ctx) {
   }
 
   await db.update(
-    "UPDATE documents SET parse_status = 'pending', parse_result = NULL, updated_at = NOW() WHERE id = ?",
+    "UPDATE documents SET parse_status = 'pending', parse_result = NULL, parse_error = NULL, chunk_count = 0, updated_at = NOW() WHERE id = ?",
     [id]
   )
+  await db.update('DELETE FROM document_chunks WHERE document_id = ?', [id])
+
+  // 异步重新解析
+  documentService.processDocumentAsync(id)
+
   await logAdminAction(ctx, 'reparse_document', 'documents', id, null)
   success(ctx, null, '已重新加入解析队列')
+}
+
+// 查看文档分块
+async function listDocumentChunks(ctx) {
+  const { id } = ctx.params
+  const page = Math.max(1, parseInt(ctx.query.page) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(ctx.query.pageSize) || 20))
+
+  const doc = await db.queryOne('SELECT id, original_name FROM documents WHERE id = ?', [id])
+  if (!doc) {
+    return error(ctx, '文档不存在', 404)
+  }
+
+  const countRow = await db.queryOne(
+    'SELECT COUNT(*) AS total FROM document_chunks WHERE document_id = ?',
+    [id]
+  )
+
+  const list = await db.queryRaw(
+    `SELECT id, chunk_index, content, token_count, embedding_dim, created_at
+     FROM document_chunks
+     WHERE document_id = ?
+     ORDER BY chunk_index ASC
+     LIMIT ? OFFSET ?`,
+    [id, pageSize, (page - 1) * pageSize]
+  )
+
+  success(ctx, {
+    documentName: doc.original_name,
+    list,
+    pagination: {
+      page,
+      pageSize,
+      total: countRow.total,
+      totalPages: Math.ceil(countRow.total / pageSize)
+    }
+  })
+}
+
+// 知识库检索测试
+async function searchKnowledgeBase(ctx) {
+  const { id } = ctx.params
+  const { query, topK, minScore } = ctx.request.body || {}
+
+  if (!query || !query.trim()) {
+    return error(ctx, '请输入查询内容', 400)
+  }
+
+  const kb = await db.queryOne('SELECT id FROM knowledge_bases WHERE id = ?', [id])
+  if (!kb) {
+    return error(ctx, '知识库不存在', 404)
+  }
+
+  try {
+    const results = await retrievalService.search({
+      query: query.trim(),
+      knowledgeBaseId: parseInt(id, 10),
+      topK: Math.min(20, Math.max(1, parseInt(topK, 10) || retrievalService.DEFAULT_TOP_K)),
+      minScore: minScore !== undefined ? Number(minScore) : retrievalService.DEFAULT_MIN_SCORE
+    })
+    success(ctx, { results })
+  } catch (e) {
+    logger.error('[Admin] 检索测试失败:', e.message)
+    return error(ctx, e.message || '检索失败', 500)
+  }
 }
 
 async function updateDocument(ctx) {
@@ -1242,6 +1318,8 @@ module.exports = {
   deleteDocument,
   reparseDocument,
   updateDocument,
+  listDocumentChunks,
+  searchKnowledgeBase,
   knowledgeUpload,
   listProviders,
   listProviderPresets,

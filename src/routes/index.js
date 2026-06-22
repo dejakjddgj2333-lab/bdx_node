@@ -4,6 +4,7 @@ const userRoutes = require('./user.routes')
 const chatRoutes = require('./chat.routes')
 const agentRoutes = require('./agent.routes')
 const voiceRoutes = require('./voice.routes')
+const meetingRoutes = require('./meeting.routes')
 const adminRoutes = require('./admin.routes')
 
 const router = new Router({ prefix: '/api' })
@@ -19,6 +20,7 @@ router.use(userRoutes.routes())
 router.use(chatRoutes.routes())
 router.use(agentRoutes.routes())
 router.use(voiceRoutes.routes())
+router.use(meetingRoutes.routes())
 router.use(adminRoutes.routes())
 
 module.exports = router

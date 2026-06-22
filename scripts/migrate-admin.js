@@ -69,7 +69,7 @@ const statements = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `INSERT INTO voice_providers (provider, name, api_key, base_url, realtime_model, default_voice, is_active, is_current, sort_order)
-   VALUES ('qwen', '阿里百炼实时多模态', '', 'wss://dashscope.aliyuncs.com', 'qwen3.5-omni-plus-realtime', 'zhiyan', TRUE, TRUE, 0)
+   VALUES ('qwen', '阿里百炼实时多模态', '', 'wss://dashscope.aliyuncs.com', 'qwen3.5-omni-plus-realtime', 'Tina', TRUE, TRUE, 0)
    ON DUPLICATE KEY UPDATE name = name`
 ]
 

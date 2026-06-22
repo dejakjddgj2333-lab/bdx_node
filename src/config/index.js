@@ -65,6 +65,15 @@ module.exports = {
     }
   },
 
+  // LiveKit 会议（音视频）
+  // url 既可指向 LiveKit Cloud（wss://xxx.livekit.cloud），也可指向自建服务
+  livekit: {
+    url: process.env.LIVEKIT_URL || '',
+    apiKey: process.env.LIVEKIT_API_KEY || '',
+    apiSecret: process.env.LIVEKIT_API_SECRET || '',
+    tokenTtl: process.env.LIVEKIT_TOKEN_TTL || '2h'
+  },
+
   // 文件上传
   upload: {
     maxSize: 50 * 1024 * 1024, // 50MB
