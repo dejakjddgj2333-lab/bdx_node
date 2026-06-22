@@ -131,6 +131,46 @@ async function getMeeting(ctx) {
 }
 
 /**
+ * 修改会议主题（仅主持人）
+ * params: roomName
+ * body: { title }
+ */
+async function updateMeetingTitle(ctx) {
+  const userId = ctx.state.user.userId
+  const { roomName } = ctx.params
+  const { title } = ctx.request.body || {}
+
+  const trimmed = (title && String(title).trim()) || ''
+  if (!trimmed) {
+    return error(ctx, '会议主题不能为空', 400, 200)
+  }
+  if (trimmed.length > 200) {
+    return error(ctx, '会议主题过长', 400, 200)
+  }
+
+  const meeting = await db.queryOne(
+    'SELECT * FROM meetings WHERE room_name = ? LIMIT 1',
+    [roomName]
+  )
+  if (!meeting) {
+    return error(ctx, '会议不存在', 404, 200)
+  }
+  if (meeting.host_user_id !== userId) {
+    return error(ctx, '只有主持人可以修改主题', 403, 200)
+  }
+  if (meeting.status === 'ended') {
+    return error(ctx, '会议已结束', 410, 200)
+  }
+
+  await db.update(
+    'UPDATE meetings SET title = ? WHERE id = ?',
+    [trimmed, meeting.id]
+  )
+
+  success(ctx, { room_name: roomName, title: trimmed })
+}
+
+/**
  * 结束会议（仅主持人）
  * params: roomName
  */
@@ -209,6 +249,7 @@ module.exports = {
   createMeeting,
   joinMeeting,
   getMeeting,
+  updateMeetingTitle,
   endMeeting,
   webhook
 }

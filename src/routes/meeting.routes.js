@@ -13,6 +13,8 @@ router.post('/', auth, meetingController.createMeeting)
 router.post('/:roomName/token', auth, meetingController.joinMeeting)
 // 会议详情 + 参会者
 router.get('/:roomName', auth, meetingController.getMeeting)
+// 修改会议主题（仅主持人）
+router.put('/:roomName', auth, meetingController.updateMeetingTitle)
 // 结束会议（仅主持人）
 router.post('/:roomName/end', auth, meetingController.endMeeting)
 
