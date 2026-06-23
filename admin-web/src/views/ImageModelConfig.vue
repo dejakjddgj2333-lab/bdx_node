@@ -169,10 +169,21 @@ async function loadModels() {
 }
 
 function formatJson(value) {
+  if (Array.isArray(value)) return value.join(', ')
   try {
     return JSON.parse(value || '[]').join(', ')
   } catch (e) {
     return value || '-'
+  }
+}
+
+function stringifyJsonField(value, defaultValue = '[]') {
+  if (value == null) return defaultValue
+  if (typeof value !== 'string') return JSON.stringify(value)
+  try {
+    return JSON.stringify(JSON.parse(value || defaultValue))
+  } catch (e) {
+    return defaultValue
   }
 }
 
@@ -198,9 +209,9 @@ function openEdit(row) {
   isEdit.value = true
   Object.assign(form, {
     ...row,
-    supported_sizes: JSON.stringify(JSON.parse(row.supported_sizes || '[]')),
-    supported_styles: JSON.stringify(JSON.parse(row.supported_styles || '[]')),
-    config: JSON.stringify(JSON.parse(row.config || '{}'))
+    supported_sizes: stringifyJsonField(row.supported_sizes, '[]'),
+    supported_styles: stringifyJsonField(row.supported_styles, '[]'),
+    config: stringifyJsonField(row.config, '{}')
   })
   modalVisible.value = true
 }
@@ -283,5 +294,4 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-@use '@/styles/common.scss';
 </style>

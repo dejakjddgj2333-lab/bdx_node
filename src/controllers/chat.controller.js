@@ -233,7 +233,8 @@ async function getImageQuota(ctx) {
 // ======================== 图片生成工具函数 ========================
 
 function parseJson(value, defaultValue) {
-  if (!value) return defaultValue
+  if (value == null) return defaultValue
+  if (typeof value !== 'string') return value
   try {
     return JSON.parse(value)
   } catch (e) {

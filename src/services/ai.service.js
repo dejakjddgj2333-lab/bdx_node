@@ -282,7 +282,7 @@ class AIService {
       size,
       style,
       n,
-      config: modelInfo.config ? JSON.parse(modelInfo.config) : {}
+      config: modelInfo.config && typeof modelInfo.config === 'string' ? JSON.parse(modelInfo.config) : (modelInfo.config || {})
     })
   }
 

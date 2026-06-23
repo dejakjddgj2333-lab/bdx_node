@@ -86,5 +86,4 @@ onMounted(loadSettings)
 </script>
 
 <style scoped lang="scss">
-@use '@/styles/common.scss';
 </style>
