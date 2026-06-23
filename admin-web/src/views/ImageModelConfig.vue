@@ -54,7 +54,7 @@
 
         <div class="form-group">
           <label>模型 ID *</label>
-          <input v-model="form.model_id" placeholder="如 doubao-image-generation-model" />
+          <input v-model="form.model_id" placeholder="火山方舟 Endpoint ID，如 ep-2024xxxxx-xxx" />
         </div>
 
         <div class="form-group">

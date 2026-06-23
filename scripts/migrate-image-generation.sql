@@ -42,5 +42,5 @@ ON DUPLICATE KEY UPDATE `key` = `key`;
 
 -- 4. 默认豆包绘图模型
 INSERT INTO image_models (name, provider, model_id, description, is_default, supported_sizes, supported_styles) VALUES
-('豆包文生图', 'doubao', 'doubao-image-generation-model', '火山方舟/豆包文生图模型', TRUE, '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]', '["通用", "写实", "动漫", "油画"]')
+('豆包文生图', 'doubao', 'your-doubao-endpoint-id', '请替换为火山方舟控制台创建的 Endpoint ID', TRUE, '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]', '["通用", "写实", "动漫", "油画"]')
 ON DUPLICATE KEY UPDATE name = name;
