@@ -12,16 +12,18 @@ async function auth(ctx, next) {
     return error(ctx, '请先登录', 401, 401)
   }
 
+  let decoded
   try {
-    const decoded = jwt.verify(token, config.jwt.secret)
-    ctx.state.user = decoded
-    await next()
+    decoded = jwt.verify(token, config.jwt.secret)
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
       return error(ctx, '登录已过期，请重新登录', 401, 401)
     }
     return error(ctx, '登录状态无效', 401, 401)
   }
+
+  ctx.state.user = decoded
+  await next()
 }
 
 /**

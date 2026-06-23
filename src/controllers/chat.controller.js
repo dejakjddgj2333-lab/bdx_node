@@ -2,6 +2,7 @@ const db = require('../utils/db')
 const { success, error } = require('../utils/response')
 const aiService = require('../services/ai.service')
 const logger = require('../utils/logger')
+const mysql = require('mysql2/promise')
 const multer = require('koa-multer')
 const sharp = require('sharp')
 const path = require('path')
@@ -190,12 +191,11 @@ async function listPaintings(ctx) {
   const offset = (Number(page) - 1) * Number(pageSize)
 
   try {
-    const rows = await db.query(
+    const rows = await db.queryRaw(
       `SELECT * FROM paintings
-       WHERE user_id = ? AND status = 'completed'
+       WHERE user_id = ${mysql.escape(userId)} AND status = 'completed'
        ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
-      [userId, Number(pageSize), offset]
+       LIMIT ${Number(pageSize)} OFFSET ${offset}`
     )
 
     const countRow = await db.queryOne(
@@ -212,7 +212,7 @@ async function listPaintings(ctx) {
       }
     })
   } catch (e) {
-    logger.error('[Chat] 获取历史作品失败:', e.message)
+    logger.error('[Chat] 获取历史作品失败:', e)
     throw e
   }
 }
