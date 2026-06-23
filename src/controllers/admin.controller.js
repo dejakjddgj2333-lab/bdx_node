@@ -960,6 +960,134 @@ async function deleteModel(ctx) {
   success(ctx, null, '删除成功')
 }
 
+// ======================== 绘图模型管理 ========================
+
+async function listImageModels(ctx) {
+  const rows = await db.query(
+    'SELECT * FROM image_models ORDER BY sort_order ASC, id ASC'
+  )
+  success(ctx, rows)
+}
+
+async function createImageModel(ctx) {
+  const { name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles, config } = ctx.request.body
+
+  if (!name || !provider || !model_id) {
+    return error(ctx, '请填写模型名称、厂商和模型 ID', 400)
+  }
+
+  if (!getProviderPreset(provider)) {
+    return error(ctx, '请选择内置厂商', 400)
+  }
+
+  const existing = await db.queryOne('SELECT id FROM image_models WHERE model_id = ?', [model_id])
+  if (existing) {
+    return error(ctx, '模型 ID 已存在', 400)
+  }
+
+  let newId
+  await db.transaction(async (conn) => {
+    if (is_default) {
+      await conn.execute('UPDATE image_models SET is_default = FALSE')
+    }
+    const [result] = await conn.execute(
+      `INSERT INTO image_models (name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles, config)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, provider, model_id, description || '', is_active !== false, is_default === true, sort_order || 0, JSON.stringify(supported_sizes || []), JSON.stringify(supported_styles || []), JSON.stringify(config || {})]
+    )
+    newId = result.insertId
+  })
+
+  await logAdminAction(ctx, 'create_image_model', 'image_models', newId, ctx.request.body)
+  success(ctx, { id: newId }, '创建成功')
+}
+
+async function updateImageModel(ctx) {
+  const { id } = ctx.params
+  const { name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles, config } = ctx.request.body
+
+  const model = await db.queryOne('SELECT id FROM image_models WHERE id = ?', [id])
+  if (!model) {
+    return error(ctx, '绘图模型不存在', 404)
+  }
+
+  if (provider !== undefined && !getProviderPreset(provider)) {
+    return error(ctx, '请选择内置厂商', 400)
+  }
+
+  const fields = []
+  const values = []
+
+  if (name !== undefined) { fields.push('name = ?'); values.push(name) }
+  if (provider !== undefined) { fields.push('provider = ?'); values.push(provider) }
+  if (model_id !== undefined) {
+    const existing = await db.queryOne('SELECT id FROM image_models WHERE model_id = ? AND id != ?', [model_id, id])
+    if (existing) {
+      return error(ctx, '模型 ID 已存在', 400)
+    }
+    fields.push('model_id = ?'); values.push(model_id)
+  }
+  if (description !== undefined) { fields.push('description = ?'); values.push(description) }
+  if (is_active !== undefined) { fields.push('is_active = ?'); values.push(is_active) }
+  if (sort_order !== undefined) { fields.push('sort_order = ?'); values.push(sort_order) }
+  if (supported_sizes !== undefined) { fields.push('supported_sizes = ?'); values.push(JSON.stringify(supported_sizes)) }
+  if (supported_styles !== undefined) { fields.push('supported_styles = ?'); values.push(JSON.stringify(supported_styles)) }
+  if (config !== undefined) { fields.push('config = ?'); values.push(JSON.stringify(config)) }
+
+  if (fields.length === 0) {
+    return error(ctx, '没有要更新的字段', 400)
+  }
+
+  await db.transaction(async (conn) => {
+    if (is_default) {
+      await conn.execute('UPDATE image_models SET is_default = FALSE')
+    }
+    await conn.execute(
+      `UPDATE image_models SET ${fields.join(', ')} WHERE id = ?`,
+      [...values, id]
+    )
+  })
+
+  await logAdminAction(ctx, 'update_image_model', 'image_models', id, ctx.request.body)
+  success(ctx, null, '更新成功')
+}
+
+async function deleteImageModel(ctx) {
+  const { id } = ctx.params
+  const model = await db.queryOne('SELECT id FROM image_models WHERE id = ?', [id])
+  if (!model) {
+    return error(ctx, '绘图模型不存在', 404)
+  }
+
+  await db.update('DELETE FROM image_models WHERE id = ?', [id])
+  await logAdminAction(ctx, 'delete_image_model', 'image_models', id, null)
+  success(ctx, null, '删除成功')
+}
+
+// ======================== 系统设置 ========================
+
+async function listSystemSettings(ctx) {
+  const rows = await db.query('SELECT `key`, `value`, description, updated_at FROM system_settings ORDER BY `key` ASC')
+  success(ctx, rows)
+}
+
+async function updateSystemSetting(ctx) {
+  const { key, value } = ctx.request.body
+  if (!key || value === undefined) {
+    return error(ctx, '请提供 key 和 value', 400)
+  }
+
+  await db.update(
+    'INSERT INTO system_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+    [key, String(value)]
+  )
+
+  await logAdminAction(ctx, 'update_system_setting', 'system_settings', key, ctx.request.body)
+  success(ctx, null, '更新成功')
+}
+
+// ======================== 首页推荐语配置 ========================
+
 async function listRemoteModels(ctx) {
   const { id } = ctx.params
   const provider = await db.queryOne('SELECT * FROM model_providers WHERE id = ?', [id])
@@ -1001,8 +1129,6 @@ async function listRemoteModels(ctx) {
     return error(ctx, `拉取模型列表失败: ${e.message}`, 500)
   }
 }
-
-// ======================== 首页推荐语配置 ========================
 
 async function listPromptSuggestions(ctx) {
   const rows = await db.query(
@@ -1332,6 +1458,12 @@ module.exports = {
   createModel,
   updateModel,
   deleteModel,
+  listImageModels,
+  createImageModel,
+  updateImageModel,
+  deleteImageModel,
+  listSystemSettings,
+  updateSystemSetting,
   listPromptSuggestions,
   createPromptSuggestion,
   updatePromptSuggestion,

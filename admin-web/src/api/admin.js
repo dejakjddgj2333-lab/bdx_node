@@ -131,6 +131,28 @@ export default {
     return request.delete(`/models/${id}`)
   },
 
+  // 绘图模型管理
+  getImageModels() {
+    return request.get('/image-models')
+  },
+  createImageModel(data) {
+    return request.post('/image-models', data)
+  },
+  updateImageModel(id, data) {
+    return request.put(`/image-models/${id}`, data)
+  },
+  deleteImageModel(id) {
+    return request.delete(`/image-models/${id}`)
+  },
+
+  // 系统设置
+  getSystemSettings() {
+    return request.get('/system-settings')
+  },
+  updateSystemSetting(key, value) {
+    return request.put('/system-settings', { key, value })
+  },
+
   // 首页推荐语配置
   getPromptSuggestions() {
     return request.get('/prompt-suggestions')

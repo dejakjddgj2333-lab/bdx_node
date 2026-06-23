@@ -223,6 +223,83 @@ class AIService {
     }
     return this.fallbackModels
   }
+
+  /**
+   * 获取可用绘图模型列表
+   */
+  async getAvailableImageModels() {
+    try {
+      const rows = await db.query(
+        'SELECT * FROM image_models WHERE is_active = TRUE ORDER BY sort_order ASC, id ASC'
+      )
+      return rows || []
+    } catch (e) {
+      logger.error('[AIService] 读取可用绘图模型列表失败:', e.message)
+      return []
+    }
+  }
+
+  /**
+   * 获取默认绘图模型
+   */
+  async getDefaultImageModel() {
+    try {
+      const row = await db.queryOne(
+        'SELECT * FROM image_models WHERE is_active = TRUE AND is_default = TRUE LIMIT 1'
+      )
+      if (row) return row
+    } catch (e) {
+      logger.error('[AIService] 读取默认绘图模型失败:', e.message)
+    }
+    const fallback = await db.queryOne(
+      'SELECT * FROM image_models WHERE is_active = TRUE ORDER BY sort_order ASC, id ASC LIMIT 1'
+    )
+    return fallback
+  }
+
+  /**
+   * 生成图片
+   */
+  async generateImage({ modelId, prompt, negativePrompt, size, style, n = 1 }) {
+    const modelInfo = await this.getImageModelInfo(modelId)
+    if (!modelInfo) {
+      throw new Error('绘图模型不存在')
+    }
+    if (!modelInfo.is_active) {
+      throw new Error('绘图模型已禁用')
+    }
+
+    const providerConfig = await this.getProviderConfig(modelInfo.provider)
+    if (!providerConfig.apiKey) {
+      throw new Error(`${modelInfo.provider} API Key 未配置`)
+    }
+
+    const provider = createImageProvider(modelInfo.provider, providerConfig)
+    return provider.generateImage({
+      model: modelInfo.model_id,
+      prompt,
+      negativePrompt,
+      size,
+      style,
+      n,
+      config: modelInfo.config ? JSON.parse(modelInfo.config) : {}
+    })
+  }
+
+  /**
+   * 从数据库获取绘图模型信息
+   */
+  async getImageModelInfo(modelId) {
+    try {
+      return await db.queryOne(
+        'SELECT * FROM image_models WHERE model_id = ? LIMIT 1',
+        [modelId]
+      )
+    } catch (e) {
+      logger.error('[AIService] 读取绘图模型配置失败:', e.message)
+      return null
+    }
+  }
 }
 
 // ======================== Provider 工厂 ========================
@@ -244,6 +321,17 @@ function createProvider(name, providerConfig) {
       return new OpenAICompatibleProvider(name, providerConfig)
     default:
       return new OpenAICompatibleProvider(name, providerConfig)
+  }
+}
+
+function createImageProvider(name, providerConfig) {
+  switch (name) {
+    case 'doubao':
+      return new DoubaoImageProvider(providerConfig)
+    case 'openai':
+      return new OpenAIImageProvider(providerConfig)
+    default:
+      return new OpenAIImageProvider(name, providerConfig)
   }
 }
 
@@ -786,3 +874,89 @@ class DoubaoWebSearchProvider {
 }
 
 module.exports = new AIService()
+
+// ======================== 图像生成 Provider ========================
+class OpenAIImageProvider {
+  constructor(providerConfig = {}) {
+    this.apiKey = providerConfig.apiKey || ''
+    this.baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1'
+  }
+
+  async generateImage({ model, prompt, negativePrompt, size = '1024x1024', style, n = 1, config = {} }) {
+    if (!this.apiKey) {
+      throw new Error('API Key 未配置')
+    }
+
+    const body = {
+      model,
+      prompt,
+      n,
+      size,
+      response_format: 'url'
+    }
+    if (style) body.style = style
+    if (negativePrompt) body.negative_prompt = negativePrompt
+
+    const response = await fetch(`${this.baseUrl}/images/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`图像生成失败: ${error}`)
+    }
+
+    const data = await response.json()
+    const images = (data.data || []).map(item => item.url).filter(Boolean)
+    return { images, revisedPrompt: data.data?.[0]?.revised_prompt || prompt }
+  }
+}
+
+class DoubaoImageProvider extends OpenAIImageProvider {
+  constructor(providerConfig = {}) {
+    super(providerConfig)
+    this.baseUrl = providerConfig.baseUrl || 'https://ark.cn-beijing.volces.com/api/v3'
+  }
+
+  async generateImage({ model, prompt, negativePrompt, size = '1024x1024', style, n = 1, config = {} }) {
+    if (!this.apiKey) {
+      throw new Error('豆包 API Key 未配置')
+    }
+
+    // 豆包图像生成支持 OpenAI 兼容接口 /images/generations
+    const body = {
+      model,
+      prompt,
+      n,
+      size,
+      response_format: 'url'
+    }
+
+    // 部分豆包模型支持 quality/response_format，透传 config
+    if (config.quality) body.quality = config.quality
+    if (negativePrompt) body.negative_prompt = negativePrompt
+
+    const response = await fetch(`${this.baseUrl}/images/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(body)
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`豆包图像生成失败: ${error}`)
+    }
+
+    const data = await response.json()
+    const images = (data.data || []).map(item => item.url).filter(Boolean)
+    return { images, revisedPrompt: data.data?.[0]?.revised_prompt || prompt }
+  }
+}

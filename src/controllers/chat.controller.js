@@ -8,6 +8,11 @@ const path = require('path')
 const fs = require('fs')
 const config = require('../config')
 
+const generatedImageDir = path.join(config.upload.path, 'generated-images')
+if (!fs.existsSync(generatedImageDir)) {
+  fs.mkdirSync(generatedImageDir, { recursive: true })
+}
+
 // 聊天图片上传配置
 const chatImageDir = path.join(config.upload.path, 'chat-images')
 if (!fs.existsSync(chatImageDir)) {
@@ -65,6 +70,275 @@ async function compressChatImage(inputPath) {
     url: `/uploads/chat-images/${filename}`,
     size: fs.statSync(outputPath).size
   }
+}
+
+/**
+ * 获取绘图模型列表
+ */
+async function getImageModels(ctx) {
+  const rows = await db.query(
+    `SELECT id, name, provider, model_id, description, is_default, supported_sizes, supported_styles, config
+     FROM image_models
+     WHERE is_active = TRUE
+     ORDER BY sort_order ASC, id ASC`
+  )
+
+  const models = rows.map(row => ({
+    id: row.model_id,
+    name: row.name,
+    provider: row.provider,
+    description: row.description || '',
+    isDefault: !!row.is_default,
+    supportedSizes: parseJson(row.supported_sizes, ['1024x1024']),
+    supportedStyles: parseJson(row.supported_styles, []),
+    config: parseJson(row.config, {})
+  }))
+
+  success(ctx, models)
+}
+
+/**
+ * 生成图片
+ */
+async function generateImage(ctx) {
+  const userId = ctx.state.user.userId
+  const { prompt, negativePrompt, model, size, style, n = 1 } = ctx.request.body
+
+  if (!prompt || !prompt.trim()) {
+    return error(ctx, '请输入图片描述', 400)
+  }
+
+  // 检查系统是否启用图片生成
+  const globalEnabled = await getSystemSetting('image_generation_enabled', 'true')
+  if (globalEnabled !== 'true') {
+    return error(ctx, '图片生成功能已暂停', 403)
+  }
+
+  // 检查配额
+  const quotaCheck = await checkImageQuota(userId)
+  if (!quotaCheck.allowed) {
+    return error(ctx, quotaCheck.message, 429)
+  }
+
+  let modelId = model
+  if (!modelId) {
+    const defaultModel = await aiService.getDefaultImageModel()
+    if (!defaultModel) {
+      return error(ctx, '未配置默认绘图模型', 500)
+    }
+    modelId = defaultModel.model_id
+  }
+
+  // 创建 pending 记录
+  const paintingId = await db.insert(
+    `INSERT INTO paintings (user_id, prompt, negative_prompt, style, status, width, height)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId, prompt.trim(), negativePrompt || '', style || '', 'pending', extractWidth(size), extractHeight(size)]
+  )
+
+  try {
+    const result = await aiService.generateImage({
+      modelId,
+      prompt: prompt.trim(),
+      negativePrompt,
+      size,
+      style,
+      n
+    })
+
+    const remoteUrl = result.images[0]
+    if (!remoteUrl) {
+      throw new Error('模型未返回图片地址')
+    }
+
+    // 下载图片到本地
+    const localUrl = await downloadGeneratedImage(remoteUrl)
+
+    await db.update(
+      `UPDATE paintings SET image_url = ?, status = ? WHERE id = ?`,
+      [localUrl, 'completed', paintingId]
+    )
+
+    // 扣除配额
+    await consumeImageQuota(userId)
+
+    success(ctx, {
+      id: paintingId,
+      imageUrl: localUrl,
+      prompt: prompt.trim(),
+      negativePrompt: negativePrompt || '',
+      style: style || '',
+      size: size || '1024x1024',
+      model: modelId
+    })
+  } catch (e) {
+    logger.error('[Chat] 图片生成失败:', e.message)
+    await db.update(
+      `UPDATE paintings SET status = ? WHERE id = ?`,
+      ['failed', paintingId]
+    )
+    return error(ctx, `图片生成失败: ${e.message}`, 500)
+  }
+}
+
+/**
+ * 获取历史作品列表
+ */
+async function listPaintings(ctx) {
+  const userId = ctx.state.user.userId
+  const { page = 1, pageSize = 20 } = ctx.query
+  const offset = (Number(page) - 1) * Number(pageSize)
+
+  try {
+    const rows = await db.query(
+      `SELECT * FROM paintings
+       WHERE user_id = ? AND status = 'completed'
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [userId, Number(pageSize), offset]
+    )
+
+    const countRow = await db.queryOne(
+      'SELECT COUNT(*) AS total FROM paintings WHERE user_id = ? AND status = ?',
+      [userId, 'completed']
+    )
+
+    success(ctx, {
+      list: rows,
+      pagination: {
+        page: Number(page),
+        pageSize: Number(pageSize),
+        total: countRow?.total ?? 0
+      }
+    })
+  } catch (e) {
+    logger.error('[Chat] 获取历史作品失败:', e.message)
+    throw e
+  }
+}
+
+/**
+ * 获取当前图片生成配额
+ */
+async function getImageQuota(ctx) {
+  const userId = ctx.state.user.userId
+  const quota = await checkImageQuota(userId)
+  success(ctx, {
+    limit: quota.limit,
+    used: quota.used,
+    remaining: Math.max(0, quota.limit - quota.used)
+  })
+}
+
+// ======================== 图片生成工具函数 ========================
+
+function parseJson(value, defaultValue) {
+  if (!value) return defaultValue
+  try {
+    return JSON.parse(value)
+  } catch (e) {
+    return defaultValue
+  }
+}
+
+function extractWidth(size = '') {
+  const match = size.match(/(\d+)x(\d+)/)
+  return match ? parseInt(match[1], 10) : 1024
+}
+
+function extractHeight(size = '') {
+  const match = size.match(/(\d+)x(\d+)/)
+  return match ? parseInt(match[2], 10) : 1024
+}
+
+async function downloadGeneratedImage(remoteUrl) {
+  const res = await fetch(remoteUrl)
+  if (!res.ok) {
+    throw new Error('下载生成的图片失败')
+  }
+
+  const ext = '.webp'
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+  const outputPath = path.join(generatedImageDir, filename)
+
+  const buffer = Buffer.from(await res.arrayBuffer())
+
+  // 转换为 webp 并压缩
+  try {
+    await sharp(buffer)
+      .webp({ quality: 90 })
+      .toFile(outputPath)
+  } catch (e) {
+    logger.warn('[Chat] 图片转 webp 失败，保存原图:', e.message)
+    fs.writeFileSync(outputPath, buffer)
+  }
+
+  return `/uploads/generated-images/${filename}`
+}
+
+async function getSystemSetting(key, defaultValue = '') {
+  try {
+    const row = await db.queryOne(
+      'SELECT value FROM system_settings WHERE `key` = ?',
+      [key]
+    )
+    return row ? row.value : defaultValue
+  } catch (e) {
+    logger.error('[Chat] 读取系统设置失败:', e.message)
+    return defaultValue
+  }
+}
+
+async function checkImageQuota(userId) {
+  const user = await db.queryOne(
+    'SELECT daily_image_quota, used_image_quota, image_quota_reset_at FROM users WHERE id = ?',
+    [userId]
+  )
+
+  if (!user) {
+    return { allowed: false, message: '用户不存在', limit: 0, used: 0 }
+  }
+
+  // 检查是否需要重置今日配额
+  const now = new Date()
+  const resetAt = user.image_quota_reset_at ? new Date(user.image_quota_reset_at) : null
+  if (!resetAt || !isSameDay(resetAt, now)) {
+    await db.update(
+      'UPDATE users SET used_image_quota = 0, image_quota_reset_at = ? WHERE id = ?',
+      [formatDate(now), userId]
+    )
+    user.used_image_quota = 0
+  }
+
+  const defaultQuota = parseInt(await getSystemSetting('default_daily_image_quota', '10'), 10) || 10
+  const limit = user.daily_image_quota !== null && user.daily_image_quota !== undefined
+    ? user.daily_image_quota
+    : defaultQuota
+  const used = user.used_image_quota || 0
+
+  if (used >= limit) {
+    return { allowed: false, message: `今日图片生成次数已用完（${limit}次）`, limit, used }
+  }
+
+  return { allowed: true, message: '', limit, used }
+}
+
+async function consumeImageQuota(userId) {
+  await db.update(
+    'UPDATE users SET used_image_quota = used_image_quota + 1 WHERE id = ?',
+    [userId]
+  )
+}
+
+function isSameDay(d1, d2) {
+  return d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
+}
+
+function formatDate(date) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 /**
@@ -309,7 +583,7 @@ async function sendMessage(ctx) {
   )
 
   // 构建消息历史
-  const messages = resolveImageUrls(await buildMessageHistory(conversation), ctx.origin)
+  const messages = resolveImageUrls(await buildMessageHistory(conversation, systemPrompt), ctx.origin)
 
   // 调用AI
   const response = await aiService.chatCompletion(useModel, messages)
@@ -341,7 +615,7 @@ async function sendMessage(ctx) {
  */
 async function streamChat(ctx) {
   const userId = ctx.state.user.userId
-  const { conversationId, content, model } = ctx.request.body
+  const { conversationId, content, model, systemPrompt } = ctx.request.body
 
   if (!isValidContent(content)) {
     return error(ctx, '消息内容不能为空', 400)
@@ -578,7 +852,7 @@ function resolveImageUrl(url, origin) {
  * 构建消息历史
  * 保留最近 VISION_CONTEXT_IMAGE_MESSAGES 条含图消息的图片，更早的图片替换为 [图片]
  */
-async function buildMessageHistory(conversation) {
+async function buildMessageHistory(conversation, extraSystemPrompt = '') {
   const VISION_CONTEXT_IMAGE_MESSAGES = 2
   const messages = []
 
@@ -587,6 +861,14 @@ async function buildMessageHistory(conversation) {
     messages.push({
       role: 'system',
       content: conversation.system_prompt
+    })
+  }
+
+  // 添加场景系统提示词
+  if (extraSystemPrompt) {
+    messages.push({
+      role: 'system',
+      content: extraSystemPrompt
     })
   }
 
@@ -626,6 +908,7 @@ module.exports = {
   uploadChatImage,
   chatImageUpload,
   getModels,
+  getImageModels,
   getPromptSuggestions,
   getConversations,
   createConversation,
@@ -634,5 +917,8 @@ module.exports = {
   deleteConversation,
   getMessages,
   sendMessage,
-  streamChat
+  streamChat,
+  generateImage,
+  listPaintings,
+  getImageQuota
 }

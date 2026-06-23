@@ -44,6 +44,18 @@ const routes = [
         meta: { title: '模型配置', icon: 'model' }
       },
       {
+        path: '/image-models',
+        name: 'ImageModelConfig',
+        component: () => import('@/views/ImageModelConfig.vue'),
+        meta: { title: '绘图模型', icon: 'image' }
+      },
+      {
+        path: '/system-settings',
+        name: 'SystemSettings',
+        component: () => import('@/views/SystemSettings.vue'),
+        meta: { title: '系统设置', icon: 'settings' }
+      },
+      {
         path: '/prompt-suggestions',
         name: 'PromptSuggestions',
         component: () => import('@/views/PromptSuggestions.vue'),

@@ -57,6 +57,16 @@ router.post('/models', adminAuth, adminController.createModel)
 router.put('/models/:id', adminAuth, adminController.updateModel)
 router.delete('/models/:id', adminAuth, adminController.deleteModel)
 
+// 绘图模型管理
+router.get('/image-models', adminAuth, adminController.listImageModels)
+router.post('/image-models', adminAuth, adminController.createImageModel)
+router.put('/image-models/:id', adminAuth, adminController.updateImageModel)
+router.delete('/image-models/:id', adminAuth, adminController.deleteImageModel)
+
+// 系统设置
+router.get('/system-settings', adminAuth, adminController.listSystemSettings)
+router.put('/system-settings', adminAuth, adminController.updateSystemSetting)
+
 // 首页推荐语配置
 router.get('/prompt-suggestions', adminAuth, adminController.listPromptSuggestions)
 router.post('/prompt-suggestions', adminAuth, adminController.createPromptSuggestion)

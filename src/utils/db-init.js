@@ -128,6 +128,87 @@ async function initDocumentChunks() {
   }
 }
 
+async function initImageModels() {
+  if (await tableExists('image_models')) {
+    return
+  }
+  logger.info('[DB-Init] 创建 image_models 表')
+  try {
+    await db.query(`
+      CREATE TABLE image_models (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100) NOT NULL COMMENT '显示名称',
+        provider VARCHAR(20) NOT NULL COMMENT '厂商标识：doubao/openai/qwen 等',
+        model_id VARCHAR(100) NOT NULL COMMENT '上游模型 ID',
+        description TEXT COMMENT '描述',
+        is_active BOOLEAN DEFAULT TRUE,
+        is_default BOOLEAN DEFAULT FALSE,
+        sort_order INT DEFAULT 0,
+        supported_sizes JSON DEFAULT NULL COMMENT '支持尺寸数组',
+        supported_styles JSON DEFAULT NULL COMMENT '支持风格数组',
+        config JSON DEFAULT NULL COMMENT '额外配置',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_active (is_active),
+        INDEX idx_sort (sort_order)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    await db.query(`
+      INSERT INTO image_models (name, provider, model_id, description, is_default, supported_sizes, supported_styles) VALUES
+      ('豆包文生图', 'doubao', 'doubao-image-generation-model', '火山方舟/豆包文生图模型', TRUE,
+       '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]',
+       '["通用", "写实", "动漫", "油画"]')
+    `)
+    logger.info('[DB-Init] image_models 表创建成功')
+  } catch (e) {
+    logger.error('[DB-Init] image_models 表创建失败:', e.message)
+  }
+}
+
+async function initSystemSettings() {
+  if (await tableExists('system_settings')) {
+    return
+  }
+  logger.info('[DB-Init] 创建 system_settings 表')
+  try {
+    await db.query(`
+      CREATE TABLE system_settings (
+        \`key\` VARCHAR(100) PRIMARY KEY,
+        \`value\` TEXT NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    await db.query(`
+      INSERT INTO system_settings (\`key\`, \`value\`, description) VALUES
+      ('default_daily_image_quota', '10', '默认每日图片生成次数'),
+      ('image_generation_enabled', 'true', '是否启用图片生成功能')
+    `)
+    logger.info('[DB-Init] system_settings 表创建成功')
+  } catch (e) {
+    logger.error('[DB-Init] system_settings 表创建失败:', e.message)
+  }
+}
+
+async function initUserImageQuotaColumns() {
+  const columns = [
+    { name: 'daily_image_quota', ddl: 'INT DEFAULT NULL COMMENT "每日图片生成限额"' },
+    { name: 'used_image_quota', ddl: 'INT DEFAULT 0 COMMENT "今日已用图片生成次数"' },
+    { name: 'image_quota_reset_at', ddl: 'TIMESTAMP NULL COMMENT "图片配额重置时间"' }
+  ]
+  for (const col of columns) {
+    if (await columnExists('users', col.name)) {
+      continue
+    }
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.ddl}`)
+      logger.info(`[DB-Init] users.${col.name} 添加成功`)
+    } catch (e) {
+      logger.error(`[DB-Init] users.${col.name} 添加失败:`, e.message)
+    }
+  }
+}
+
 async function initMeetings() {
   if (!(await tableExists('meetings'))) {
     logger.info('[DB-Init] 创建 meetings 表')
@@ -172,10 +253,45 @@ async function initMeetings() {
   }
 }
 
+async function initPaintings() {
+  if (await tableExists('paintings')) {
+    return
+  }
+  logger.info('[DB-Init] 创建 paintings 表')
+  try {
+    await db.query(`
+      CREATE TABLE paintings (
+        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+        user_id BIGINT NOT NULL COMMENT '用户ID',
+        prompt TEXT NOT NULL COMMENT '正向提示词',
+        negative_prompt TEXT DEFAULT NULL COMMENT '负面提示词',
+        style VARCHAR(50) DEFAULT NULL COMMENT '风格',
+        size VARCHAR(20) DEFAULT NULL COMMENT '尺寸',
+        model VARCHAR(100) DEFAULT NULL COMMENT '使用的模型ID',
+        image_url TEXT DEFAULT NULL COMMENT '生成的本地图片地址',
+        status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/completed/failed',
+        width INT DEFAULT 0,
+        height INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_user_status (user_id, status),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `)
+    logger.info('[DB-Init] paintings 表创建成功')
+  } catch (e) {
+    logger.error('[DB-Init] paintings 表创建失败:', e.message)
+  }
+}
+
 async function init() {
   try {
     await initPromptSuggestions()
     await initAiModelsColumns()
+    await initUserImageQuotaColumns()
+    await initImageModels()
+    await initSystemSettings()
+    await initPaintings()
     await initDocumentColumns()
     await initDocumentChunks()
     await initMeetings()
