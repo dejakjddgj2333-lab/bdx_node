@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const request = axios.create({
-  baseURL: '/api/admin',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/admin',
   timeout: 30000
 })
 

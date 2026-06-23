@@ -15,12 +15,13 @@
             <span v-if="row.is_default" class="badge badge--warning">默认</span>
             <button v-else class="action-btn" @click="updateModel(row, { is_default: true })">设为默认</button>
           </span>
-          <span v-else-if="column.key === 'supported_sizes'">
-            {{ formatJson(row.supported_sizes) }}
+          <span v-else-if="column.key === 'supported_sizes'" class="cell-tags">
+            <span v-for="(tag, idx) in formatJsonList(row.supported_sizes)" :key="idx" class="tag">{{ tag }}</span>
           </span>
-          <span v-else-if="column.key === 'supported_styles'">
-            {{ formatJson(row.supported_styles) }}
+          <span v-else-if="column.key === 'supported_styles'" class="cell-tags">
+            <span v-for="(tag, idx) in formatJsonList(row.supported_styles)" :key="idx" class="tag">{{ tag }}</span>
           </span>
+          <span v-else-if="column.key === 'model_id'" :title="row.model_id" class="model-id-cell">{{ row.model_id }}</span>
           <span v-else-if="column.key === 'sort_order'">
             <input
               :value="row.sort_order"
@@ -55,6 +56,7 @@
         <div class="form-group">
           <label>模型 ID *</label>
           <input v-model="form.model_id" placeholder="火山方舟 Endpoint ID，如 ep-2024xxxxx-xxx" />
+          <span class="form-hint">OpenAI 兼容接口调用时使用的 model 字段</span>
         </div>
 
         <div class="form-group">
@@ -64,7 +66,7 @@
 
         <div class="form-group">
           <label>描述</label>
-          <textarea v-model="form.description" placeholder="模型简介" />
+          <textarea v-model="form.description" placeholder="模型简介，会在前端选择模型时显示" />
         </div>
 
         <div class="form-row">
@@ -87,16 +89,19 @@
         <div class="form-group">
           <label>支持尺寸（JSON 数组）</label>
           <input v-model="form.supported_sizes" placeholder='["1024x1024", "1536x1024"]' />
+          <span class="form-hint">每个尺寸格式为 宽x高，如 1024x1024</span>
         </div>
 
         <div class="form-group">
           <label>支持风格（JSON 数组）</label>
           <input v-model="form.supported_styles" placeholder='["通用", "写实", "动漫"]' />
+          <span class="form-hint">留空表示该模型不支持风格选择</span>
         </div>
 
         <div class="form-group">
           <label>额外配置（JSON）</label>
           <textarea v-model="form.config" rows="3" placeholder='{"quality": "standard"}' />
+          <span class="form-hint">按厂商透传到上游接口，如 quality、response_format 等</span>
         </div>
       </div>
 
@@ -165,6 +170,15 @@ async function loadModels() {
     alert(e.message)
   } finally {
     loading.value = false
+  }
+}
+
+function formatJsonList(value) {
+  if (Array.isArray(value)) return value
+  try {
+    return JSON.parse(value || '[]')
+  } catch (e) {
+    return []
   }
 }
 
@@ -294,4 +308,235 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+@use '@/styles/variables.scss' as *;
+
+.image-model-config-page {
+  padding-bottom: 32px;
+}
+
+.page-header {
+  margin-bottom: 24px;
+
+  .page-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: $text;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.table-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.action-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: rgba($primary, 0.08);
+  border: 1px solid rgba($primary, 0.2);
+  color: $primary;
+  padding: 4px 10px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba($primary, 0.15);
+  }
+
+  &--danger {
+    background: rgba($pink, 0.08);
+    border-color: rgba($pink, 0.2);
+    color: $pink;
+
+    &:hover {
+      background: rgba($pink, 0.15);
+    }
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: $radius-pill;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+
+  &--success {
+    background: rgba($success, 0.1);
+    color: $success;
+  }
+
+  &--default {
+    background: rgba($text-tertiary, 0.1);
+    color: $text-secondary;
+  }
+
+  &--warning {
+    background: rgba($accent, 0.1);
+    color: darken($accent, 8%);
+  }
+}
+
+.inline-input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid $border;
+  border-radius: $radius-sm;
+  font-size: 13px;
+  color: $text;
+  background: $bg-card;
+  text-align: center;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $border-focus;
+  }
+}
+
+.cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: rgba($primary, 0.08);
+    border: 1px solid rgba($primary, 0.15);
+    color: $primary;
+    border-radius: $radius-pill;
+    font-size: 11px;
+    font-weight: 500;
+  }
+}
+
+.model-id-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: $text-secondary;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 13px;
+    font-weight: 500;
+    color: $text;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 10px 12px;
+    border: 1px solid $border;
+    border-radius: $radius-md;
+    font-size: 14px;
+    color: $text;
+    background: $bg-card;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+    &:focus {
+      outline: none;
+      border-color: $primary;
+      box-shadow: 0 0 0 3px $border-focus;
+    }
+
+    &::placeholder {
+      color: $text-tertiary;
+    }
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+  }
+
+  select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+}
+
+.form-group--inline {
+  flex-direction: row;
+  gap: 20px;
+  align-items: center;
+  padding-top: 24px;
+
+  .checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: $text;
+    cursor: pointer;
+    user-select: none;
+
+    input[type='checkbox'] {
+      width: 16px;
+      height: 16px;
+      accent-color: $primary;
+      cursor: pointer;
+    }
+  }
+}
+
+.form-hint {
+  font-size: 12px;
+  color: $text-tertiary;
+  margin-top: 2px;
+}
+
+:deep(.modal-footer) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
 </style>
