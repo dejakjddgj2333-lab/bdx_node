@@ -1,11 +1,14 @@
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
+    password VARCHAR(255) DEFAULT NULL COMMENT '密码，一键登录/邮箱登录用户可为空',
     nickname VARCHAR(50),
     avatar VARCHAR(500),
     phone VARCHAR(20) UNIQUE,
     email VARCHAR(100) UNIQUE,
+    apple_id VARCHAR(100) UNIQUE COMMENT 'Apple Sign In 用户标识',
+    email_verified_at TIMESTAMP NULL COMMENT '邮箱验证时间',
+    login_type VARCHAR(20) DEFAULT 'username' COMMENT '注册/登录方式：username/phone/email/apple',
     vip_level INT DEFAULT 0,
     vip_expire_at TIMESTAMP NULL,
     daily_quota INT DEFAULT 50,
@@ -16,7 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
     status INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username)
+    INDEX idx_username (username),
+    INDEX idx_phone (phone),
+    INDEX idx_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS conversations (

@@ -190,6 +190,55 @@ async function initSystemSettings() {
   }
 }
 
+async function initAuthColumns() {
+  const columns = [
+    { name: 'email_verified_at', ddl: 'TIMESTAMP NULL COMMENT "邮箱验证时间"' },
+    { name: 'login_type', ddl: "VARCHAR(20) DEFAULT 'username' COMMENT '注册/登录方式：username/phone/email/apple'" },
+    { name: 'apple_id', ddl: 'VARCHAR(100) UNIQUE COMMENT "Apple Sign In 用户标识"' }
+  ]
+  for (const col of columns) {
+    if (await columnExists('users', col.name)) {
+      continue
+    }
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.ddl}`)
+      logger.info(`[DB-Init] users.${col.name} 添加成功`)
+    } catch (e) {
+      logger.error(`[DB-Init] users.${col.name} 添加失败:`, e.message)
+    }
+  }
+
+  // password 允许为空，兼容一键登录/邮箱登录自动注册
+  try {
+    const col = (await db.queryRaw("SHOW COLUMNS FROM users LIKE 'password'"))[0]
+    if (col && col.Null === 'NO') {
+      await db.query('ALTER TABLE users MODIFY COLUMN password VARCHAR(255) NULL')
+      logger.info('[DB-Init] users.password 已改为可空')
+    }
+  } catch (e) {
+    logger.error('[DB-Init] users.password 调整失败:', e.message)
+  }
+
+  // 补充 phone/email 索引
+  const indexes = [
+    { name: 'idx_phone', ddl: 'ADD INDEX idx_phone (phone)' },
+    { name: 'idx_email', ddl: 'ADD INDEX idx_email (email)' }
+  ]
+  for (const idx of indexes) {
+    try {
+      const exists = await db.queryRaw(
+        `SHOW INDEX FROM users WHERE Key_name = ${mysql.escape(idx.name)}`
+      )
+      if (exists.length === 0) {
+        await db.query(`ALTER TABLE users ${idx.ddl}`)
+        logger.info(`[DB-Init] users.${idx.name} 索引添加成功`)
+      }
+    } catch (e) {
+      logger.error(`[DB-Init] users.${idx.name} 索引添加失败:`, e.message)
+    }
+  }
+}
+
 async function initUserImageQuotaColumns() {
   const columns = [
     { name: 'daily_image_quota', ddl: 'INT DEFAULT NULL COMMENT "每日图片生成限额"' },
@@ -286,6 +335,7 @@ async function initPaintings() {
 
 async function init() {
   try {
+    await initAuthColumns()
     await initPromptSuggestions()
     await initAiModelsColumns()
     await initUserImageQuotaColumns()

@@ -82,6 +82,22 @@ module.exports = {
     publicUrl: process.env.PUBLIC_URL || ''
   },
 
+  // 阿里云号码认证（一键登录）
+  aliyun: {
+    accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET || '',
+  },
+
+  // 邮件服务（SMTP）
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.qq.com',
+    port: parseInt(process.env.SMTP_PORT) || 465,
+    secure: process.env.SMTP_SECURE !== 'false',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+  },
+
   // 后台管理员
   admin: {
     password: process.env.ADMIN_PASSWORD || 'bdxadmin2024',
