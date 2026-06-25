@@ -11,6 +11,8 @@
     "db:studio": "npx prisma studio"
   },
   "dependencies": {
+    "@alicloud/dypnsapi20170525": "^2.0.0",
+    "@alicloud/openapi-client": "^0.4.15",
     "@koa/cors": "^5.0.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
@@ -24,6 +26,7 @@
     "livekit-server-sdk": "^2.15.4",
     "mammoth": "^1.12.0",
     "mysql2": "^3.22.5",
+    "nodemailer": "^9.0.1",
     "pdf-parse": "^2.4.5",
     "sharp": "^0.35.1",
     "uuid": "^9.0.1",

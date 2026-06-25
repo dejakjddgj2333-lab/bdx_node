@@ -94,6 +94,7 @@ async function uploadAvatar(ctx) {
  */
 async function getProfile(ctx) {
   const userId = ctx.state.user.userId
+  logger.info(`[GetProfile] 当前 token 对应的 userId: ${userId}`)
 
   const user = await db.queryOne(
     `SELECT id, username, nickname, avatar, phone, email,
@@ -103,9 +104,11 @@ async function getProfile(ctx) {
   )
 
   if (!user) {
+    logger.error(`[GetProfile] 用户不存在: userId=${userId}`)
     return error(ctx, '用户不存在', 404)
   }
 
+  logger.info(`[GetProfile] 返回用户信息: id=${user.id}, username=${user.username}, nickname=${user.nickname}`)
   success(ctx, user)
 }
 

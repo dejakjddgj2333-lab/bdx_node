@@ -72,6 +72,10 @@ async function createOrLoginUser({ phone, email, appleId, nickname, loginType })
     throw new Error('账号已被禁用')
   }
 
+  logger.info(
+    `[createOrLoginUser] 登录/创建用户成功: userId=${user.id}, username=${user.username}, phone=${user.phone}, email=${user.email}, apple_id=${user.apple_id}, loginType=${loginType}`
+  )
+
   return {
     token: generateToken(user.id),
     user: formatUser(user),
