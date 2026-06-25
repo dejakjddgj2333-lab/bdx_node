@@ -108,6 +108,9 @@ async function oneClickLogin(ctx) {
       nickname: phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
     })
 
+    const tokenPayload = jwt.decode(result.token)
+    logger.info(`[OneClickLogin] 返回给前端的 token 中 userId=${tokenPayload?.userId}`)
+
     success(ctx, result, '登录成功')
   } catch (err) {
     logger.error('[OneClickLogin] 失败:', err)
