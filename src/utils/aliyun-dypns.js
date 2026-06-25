@@ -1,5 +1,10 @@
 const OpenApi = require('@alicloud/openapi-client')
-const Dypnsapi20170525 = require('@alicloud/dypnsapi20170525')
+// @alicloud/dypnsapi20170525 是 Darabonba 生成的 SDK，CommonJS 下：
+// - Client 类挂在 .default 上（直接 new 模块对象会报 "is not a constructor"）
+// - 各请求类（GetMobileRequest 等）挂在模块顶层
+const Dypnsapi = require('@alicloud/dypnsapi20170525')
+const Dypnsapi20170525 = Dypnsapi.default
+const { GetMobileRequest } = Dypnsapi
 const config = require('../config')
 const logger = require('./logger')
 
@@ -19,12 +24,16 @@ function createClient() {
  */
 async function getMobileByToken(token) {
   const client = createClient()
-  const req = new Dypnsapi20170525.GetMobileRequest({
+  const req = new GetMobileRequest({
     accessToken: token,
   })
   const res = await client.getMobile(req)
-  logger.info('[AliyunDypns] 取号响应:', JSON.stringify(res.body))
-  return res.body?.getMobileResponseDTO?.mobile
+  const body = res.body || {}
+  logger.info('[AliyunDypns] 取号响应:', JSON.stringify(body))
+  if (body.code !== 'OK') {
+    throw new Error(`阿里云取号失败: ${body.code} ${body.message || ''}`.trim())
+  }
+  return body.getMobileResultDTO?.mobile || null
 }
 
 module.exports = { getMobileByToken }
