@@ -72,10 +72,6 @@ async function createOrLoginUser({ phone, email, appleId, nickname, loginType })
     throw new Error('账号已被禁用')
   }
 
-  logger.info(
-    `[createOrLoginUser] 登录/创建用户成功: userId=${user.id}, username=${user.username}, phone=${user.phone}, email=${user.email}, apple_id=${user.apple_id}, loginType=${loginType}`
-  )
-
   return {
     token: generateToken(user.id),
     user: formatUser(user),
@@ -107,9 +103,6 @@ async function oneClickLogin(ctx) {
       loginType: 'phone',
       nickname: phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
     })
-
-    const tokenPayload = jwt.decode(result.token)
-    logger.info(`[OneClickLogin] 返回给前端的 token 中 userId=${tokenPayload?.userId}`)
 
     success(ctx, result, '登录成功')
   } catch (err) {
