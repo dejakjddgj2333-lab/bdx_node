@@ -26,42 +26,17 @@ module.exports = {
 
   // AI模型API配置
   ai: {
-    deepseek: {
-      apiKey: process.env.DEEPSEEK_API_KEY || '',
-      baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'
+    // 火山方舟 Agent Plan（阶段一：所有 AI 能力收敛到此单入口）
+    ark: {
+      apiKey: process.env.ARK_API_KEY || '',
+      planBaseUrl: process.env.ARK_PLAN_BASE_URL || 'https://ark.cn-beijing.volces.com/api/plan',
+      planV3BaseUrl: process.env.ARK_PLAN_V3_BASE_URL || 'https://ark.cn-beijing.volces.com/api/plan/v3'
     },
+    // qwen 空壳：阶段二语音重构前仍被 src/services/voice-call/presets.js 第89行引用，勿删
     qwen: {
-      apiKey: process.env.QWEN_API_KEY || '',
-      baseUrl: process.env.QWEN_BASE_URL || 'https://dashscope.aliyuncs.com',
-      realtimeModel: process.env.QWEN_REALTIME_MODEL || 'qwen3.5-omni-plus-realtime'
-    },
-    claude: {
-      apiKey: process.env.CLAUDE_API_KEY || '',
-      baseUrl: process.env.CLAUDE_BASE_URL || 'https://api.anthropic.com'
-    },
-    doubao: {
-      apiKey: process.env.DOUBAO_API_KEY || '',
-      baseUrl: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3'
-    },
-    moonshot: {
-      apiKey: process.env.MOONSHOT_API_KEY || '',
-      baseUrl: process.env.MOONSHOT_BASE_URL || 'https://api.moonshot.cn/v1'
-    },
-    qianfan: {
-      apiKey: process.env.QIANFAN_API_KEY || '',
-      baseUrl: process.env.QIANFAN_BASE_URL || 'https://qianfan.baidubce.com/v2'
-    },
-    zhipu: {
-      apiKey: process.env.ZHIPU_API_KEY || '',
-      baseUrl: process.env.ZHIPU_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
-    },
-    xinghuo: {
-      apiKey: process.env.XINGHUO_API_KEY || '',
-      baseUrl: process.env.XINGHUO_BASE_URL || 'https://spark-api-open.xf-yun.com/v1'
-    },
-    minimax: {
-      apiKey: process.env.MINIMAX_API_KEY || '',
-      baseUrl: process.env.MINIMAX_BASE_URL || 'https://api.minimax.chat/v1'
+      apiKey: '',
+      baseUrl: '',
+      realtimeModel: 'qwen3.5-omni-plus-realtime'
     }
   },
 
