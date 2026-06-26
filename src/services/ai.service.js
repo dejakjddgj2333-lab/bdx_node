@@ -3,91 +3,25 @@ const db = require('../utils/db')
 const logger = require('../utils/logger')
 
 /**
- * AI服务 - 支持多模型切换
- * 统一封装各厂商API调用，支持从数据库动态读取模型配置与 API Key
+ * AI服务 - 火山方舟 Agent Plan 单入口
+ * 阶段一：对话能力收敛到方舟 Plan（chat/completions + responses 联网搜索）
  */
 
 class AIService {
   constructor() {
-    // 硬编码兜底模型列表
+    // 兜底模型列表（与 DB 种子 migrate-ark-plan.sql 一致：11 个方舟 Plan 模型）
     this.fallbackModels = [
-      {
-        id: 1,
-        name: 'DeepSeek V4 Pro',
-        provider: 'deepseek',
-        model_id: 'deepseek-v4-pro',
-        description: 'DeepSeek最新对话模型，支持联网搜索',
-        is_default: true,
-        is_active: true,
-        max_tokens: 8192,
-        sort_order: 0
-      },
-      {
-        id: 2,
-        name: 'DeepSeek V4 Flash',
-        provider: 'deepseek',
-        model_id: 'deepseek-v4-flash',
-        description: 'DeepSeek轻量快速模型，支持联网搜索',
-        is_default: false,
-        is_active: true,
-        max_tokens: 8192,
-        sort_order: 1
-      },
-      {
-        id: 3,
-        name: 'DeepSeek V3',
-        provider: 'deepseek',
-        model_id: 'deepseek-chat',
-        description: 'DeepSeek对话模型，综合能力强',
-        is_default: false,
-        is_active: true,
-        max_tokens: 8192,
-        sort_order: 2
-      },
-      {
-        id: 4,
-        name: 'DeepSeek R1',
-        provider: 'deepseek',
-        model_id: 'deepseek-reasoner',
-        description: 'DeepSeek推理模型，擅长逻辑推理和编程',
-        is_default: false,
-        is_active: true,
-        max_tokens: 8192,
-        sort_order: 3
-      },
-      {
-        id: 5,
-        name: '通义千问 Turbo',
-        provider: 'qwen',
-        model_id: 'qwen-turbo',
-        description: '阿里云通义千问，中文理解优秀',
-        is_default: false,
-        is_active: true,
-        max_tokens: 4096,
-        sort_order: 4
-      },
-      {
-        id: 6,
-        name: '通义千问 Max',
-        provider: 'qwen',
-        model_id: 'qwen-max',
-        description: '通义千问最强版本',
-        is_default: false,
-        is_active: true,
-        max_tokens: 4096,
-        sort_order: 5
-      },
-      {
-        id: 7,
-        name: 'Claude Sonnet',
-        provider: 'claude',
-        model_id: 'claude-sonnet-4-6',
-        description: 'Anthropic Claude，英文能力出色',
-        is_default: false,
-        is_active: true,
-        max_tokens: 4096,
-        sort_order: 6
-      }
+      { id: 1,  name: '豆包 Seed 2.0 Pro',  provider: 'ark', model_id: 'doubao-seed-2.0-pro',  description: '字节豆包旗舰对话模型，综合能力强，支持联网搜索', is_default: true,  is_active: true, supports_web_search: true,  max_tokens: 8192, sort_order: 0 },
+      { id: 2,  name: '豆包 Seed 2.0 Code', provider: 'ark', model_id: 'doubao-seed-2.0-code', description: '豆包编程专用模型，擅长代码生成与调试',         is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 1 },
+      { id: 3,  name: '豆包 Seed 2.0 Lite', provider: 'ark', model_id: 'doubao-seed-2.0-lite', description: '豆包轻量版本，响应快、成本低',                  is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 2 },
+      { id: 4,  name: '豆包 Seed 2.0 Mini', provider: 'ark', model_id: 'doubao-seed-2.0-mini', description: '豆包最小体积版本，适合轻量场景',               is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 3 },
+      { id: 5,  name: 'GLM-5.2',           provider: 'ark', model_id: 'glm-5.2',              description: '智谱 GLM 5.2 通用对话模型',                     is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 4 },
+      { id: 6,  name: 'Kimi K2.7 Code',    provider: 'ark', model_id: 'kimi-k2.7-code',       description: '月之暗面 Kimi K2.7 编程增强模型',             is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 5 },
+      { id: 7,  name: 'DeepSeek V4 Pro',   provider: 'ark', model_id: 'deepseek-v4-pro',      description: 'DeepSeek V4 Pro 旗舰对话模型',                is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 6 },
+      { id: 8,  name: 'DeepSeek V4 Flash', provider: 'ark', model_id: 'deepseek-v4-flash',    description: 'DeepSeek V4 Flash 轻量快速模型',              is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 7 },
+      { id: 9,  name: 'MiniMax M3',        provider: 'ark', model_id: 'minimax-m3',           description: 'MiniMax M3 通用对话模型',                     is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 8 },
+      { id: 10, name: 'MiniMax M2.7',      provider: 'ark', model_id: 'minimax-m2.7',         description: 'MiniMax M2.7 对话模型',                       is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 9 },
+      { id: 11, name: 'Kimi K2.6',         provider: 'ark', model_id: 'kimi-k2.6',            description: '月之暗面 Kimi K2.6 长文本对话模型',           is_default: false, is_active: true, supports_web_search: false, max_tokens: 8192, sort_order: 10 }
     ]
   }
 
@@ -108,9 +42,11 @@ class AIService {
   }
 
   /**
-   * 从数据库获取 Provider 配置（API Key + Base URL）
+   * 从数据库获取方舟 Provider 配置（API Key + Base URL）
+   * 收敛后 provider 名固定 'ark'：读 model_providers 表 provider='ark' 行，
+   * 回退到 config.ai.ark。base_url 存的是 planBaseUrl（https://ark.cn-beijing.volces.com/api/plan）。
    */
-  async getProviderConfig(providerName) {
+  async getProviderConfig(providerName = 'ark') {
     try {
       const row = await db.queryOne(
         'SELECT * FROM model_providers WHERE provider = ? AND is_active = TRUE LIMIT 1',
@@ -123,10 +59,10 @@ class AIService {
       logger.error('[AIService] 读取 Provider 配置失败:', e.message)
     }
 
-    // 回退到 .env 配置
-    const envConfig = config.ai[providerName]
-    if (envConfig) {
-      return { apiKey: envConfig.apiKey, baseUrl: envConfig.baseUrl }
+    // 回退到 config.ai.ark（.env）
+    const arkConfig = config.ai.ark
+    if (arkConfig) {
+      return { apiKey: arkConfig.apiKey, baseUrl: arkConfig.planBaseUrl }
     }
 
     return { apiKey: '', baseUrl: '' }
@@ -134,23 +70,12 @@ class AIService {
 
   /**
    * 解析模型对应的 Provider 名称与配置
+   * 收敛后：modelInfo.provider 恒为 'ark'（DB 种子已是）；
+   * 找不到 modelInfo 时兜底 'ark'，不再按 modelId 前缀分发多厂商。
    */
   async resolveProvider(modelId) {
     const modelInfo = await this.getModelInfo(modelId)
-    let providerName = modelInfo?.provider
-
-    if (!providerName) {
-      if (modelId.startsWith('deepseek')) providerName = 'deepseek'
-      else if (modelId.startsWith('qwen') || modelId.startsWith('gpt')) providerName = 'qwen'
-      else if (modelId.startsWith('claude')) providerName = 'claude'
-      else if (modelId.startsWith('doubao') || modelId.startsWith('ark')) providerName = 'doubao'
-      else if (modelId.startsWith('moonshot')) providerName = 'moonshot'
-      else if (modelId.startsWith('glm')) providerName = 'zhipu'
-      else if (modelId.startsWith('spark') || modelId.startsWith('xinghuo')) providerName = 'xinghuo'
-      else if (modelId.startsWith('minimax')) providerName = 'minimax'
-      else if (modelId.startsWith('ernie')) providerName = 'qianfan'
-      else providerName = 'deepseek'
-    }
+    const providerName = modelInfo?.provider || 'ark'
 
     const providerConfig = await this.getProviderConfig(providerName)
     return { providerName, providerConfig, modelInfo }
@@ -171,8 +96,8 @@ class AIService {
       maxTokens: modelInfo?.max_tokens || options.maxTokens
     }
 
-    // 豆包模型若支持联网搜索，使用 Responses API
-    if (modelInfo?.supports_web_search && providerName === 'doubao') {
+    // 模型若支持联网搜索，走方舟 Plan Responses API
+    if (modelInfo?.supports_web_search) {
       const provider = new DoubaoWebSearchProvider(providerConfig)
       return provider.chatCompletion(modelId, messages, mergedOptions)
     }
@@ -196,8 +121,8 @@ class AIService {
       maxTokens: modelInfo?.max_tokens || options.maxTokens
     }
 
-    // 豆包模型若支持联网搜索，使用 Responses API
-    if (modelInfo?.supports_web_search && providerName === 'doubao') {
+    // 模型若支持联网搜索，走方舟 Plan Responses API
+    if (modelInfo?.supports_web_search) {
       const provider = new DoubaoWebSearchProvider(providerConfig)
       yield* provider.streamChatCompletion(modelId, messages, mergedOptions)
       return
@@ -304,24 +229,10 @@ class AIService {
 
 // ======================== Provider 工厂 ========================
 
+// 收敛后：对话 Provider 统一为方舟 ArkChatProvider（Plan chat/completions）。
+// 联网搜索模型由 chatCompletion/streamChatCompletion 直接 new DoubaoWebSearchProvider，不经此工厂。
 function createProvider(name, providerConfig) {
-  switch (name) {
-    case 'deepseek':
-      return new DeepSeekProvider(providerConfig)
-    case 'qwen':
-      return new QwenProvider(providerConfig)
-    case 'claude':
-      return new ClaudeProvider(providerConfig)
-    case 'doubao':
-    case 'moonshot':
-    case 'qianfan':
-    case 'zhipu':
-    case 'xinghuo':
-    case 'minimax':
-      return new OpenAICompatibleProvider(name, providerConfig)
-    default:
-      return new OpenAICompatibleProvider(name, providerConfig)
-  }
+  return new ArkChatProvider(providerConfig)
 }
 
 function createImageProvider(name, providerConfig) {
@@ -335,17 +246,29 @@ function createImageProvider(name, providerConfig) {
   }
 }
 
-// ======================== DeepSeek Provider ========================
-
-class DeepSeekProvider {
+// ======================== 方舟对话 Provider ========================
+// 火山方舟 Agent Plan：chat/completions 接口，Bearer 认证。
+// baseUrl = config.ai.ark.planBaseUrl（https://ark.cn-beijing.volces.com/api/plan），
+// 请求路径 /chat/completions。流式/非流式均支持。
+class ArkChatProvider {
   constructor(providerConfig = {}) {
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || 'https://api.deepseek.com'
+    this.apiKey = providerConfig.apiKey || config.ai.ark.apiKey || ''
+    this.baseUrl = providerConfig.baseUrl || config.ai.ark.planBaseUrl
+  }
+
+  buildRequestBody(model, messages, options = {}, stream = false) {
+    return {
+      model,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream
+    }
   }
 
   async chatCompletion(model, messages, options = {}) {
     if (!this.apiKey) {
-      throw new Error('DeepSeek API Key未配置')
+      throw new Error('火山方舟 API Key未配置')
     }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -359,25 +282,15 @@ class DeepSeekProvider {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`DeepSeek API错误: ${error}`)
+      throw new Error(`火山方舟 API错误: ${error}`)
     }
 
     return await response.json()
   }
 
-  buildRequestBody(model, messages, options = {}, stream = false) {
-    return {
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream
-    }
-  }
-
   async *streamChatCompletion(model, messages, options = {}) {
     if (!this.apiKey) {
-      throw new Error('DeepSeek API Key未配置')
+      throw new Error('火山方舟 API Key未配置')
     }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -391,7 +304,7 @@ class DeepSeekProvider {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`DeepSeek API错误: ${error}`)
+      throw new Error(`火山方舟 API错误: ${error}`)
     }
 
     const reader = response.body.getReader()
@@ -412,7 +325,7 @@ class DeepSeekProvider {
             try {
               const parsed = JSON.parse(data)
               const delta = parsed.choices?.[0]?.delta
-              // deepseek-v4-pro 会先输出 reasoning_content，再输出 content
+              // 优先 content；deepseek-v4-pro 等模型会先输出 reasoning_content，再输出 content
               const content = delta?.content || delta?.reasoning_content || ''
               if (content) {
                 yield content
@@ -429,331 +342,14 @@ class DeepSeekProvider {
   }
 }
 
-// ======================== 通义千问 Provider ========================
-
-class QwenProvider {
-  constructor(providerConfig = {}) {
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || 'https://dashscope.aliyuncs.com'
-  }
-
-  async chatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error('通义千问 API Key未配置')
-    }
-
-    const response = await fetch(`${this.baseUrl}/compatible-mode/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`通义千问 API错误: ${error}`)
-    }
-
-    return await response.json()
-  }
-
-  async *streamChatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error('通义千问 API Key未配置')
-    }
-
-    const response = await fetch(`${this.baseUrl}/compatible-mode/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: true
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`通义千问 API错误: ${error}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(line => line.trim())
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || ''
-              if (content) {
-                yield content
-              }
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-}
-
-// ======================== Claude Provider ========================
-
-class ClaudeProvider {
-  constructor(providerConfig = {}) {
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || 'https://api.anthropic.com'
-  }
-
-  async chatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error('Claude API Key未配置')
-    }
-
-    const { system, claudeMessages } = this.convertMessages(messages)
-
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: model.replace('claude-', 'claude-3-'),
-        max_tokens: options.maxTokens ?? 4096,
-        temperature: options.temperature ?? 0.7,
-        system,
-        messages: claudeMessages
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Claude API错误: ${error}`)
-    }
-
-    return await response.json()
-  }
-
-  async *streamChatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error('Claude API Key未配置')
-    }
-
-    const { system, claudeMessages } = this.convertMessages(messages)
-
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: model.replace('claude-', 'claude-3-'),
-        max_tokens: options.maxTokens ?? 4096,
-        temperature: options.temperature ?? 0.7,
-        system,
-        messages: claudeMessages,
-        stream: true
-      })
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Claude API错误: ${error}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(line => line.trim())
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.delta?.text || ''
-              if (content) {
-                yield content
-              }
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  convertMessages(messages) {
-    let system = ''
-    const claudeMessages = []
-
-    for (const msg of messages) {
-      if (msg.role === 'system') {
-        system += msg.content + '\n'
-      } else {
-        claudeMessages.push({
-          role: msg.role,
-          content: msg.content
-        })
-      }
-    }
-
-    return { system: system.trim(), claudeMessages }
-  }
-}
-
-// ======================== OpenAI 兼容通用 Provider ========================
-// 用于豆包、Kimi、智谱、星火、MiniMax、文心一言等 OpenAI 兼容接口
-class OpenAICompatibleProvider {
-  constructor(name = 'openai', providerConfig = {}) {
-    this.name = name
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || ''
-  }
-
-  displayName() {
-    const nameMap = {
-      doubao: '豆包',
-      moonshot: 'Kimi',
-      qianfan: '文心一言',
-      zhipu: '智谱 GLM',
-      xinghuo: '讯飞星火',
-      minimax: 'MiniMax'
-    }
-    return nameMap[this.name] || this.name
-  }
-
-  async chatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error(`${this.displayName()} API Key未配置`)
-    }
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify(this.buildRequestBody(model, messages, options, false))
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`${this.displayName()} API错误: ${error}`)
-    }
-
-    return await response.json()
-  }
-
-  buildRequestBody(model, messages, options = {}, stream = false) {
-    return {
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream
-    }
-  }
-
-  async *streamChatCompletion(model, messages, options = {}) {
-    if (!this.apiKey) {
-      throw new Error(`${this.displayName()} API Key未配置`)
-    }
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify(this.buildRequestBody(model, messages, options, true))
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`${this.displayName()} API错误: ${error}`)
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(line => line.trim())
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(data)
-              const delta = parsed.choices?.[0]?.delta
-              // 通用 OpenAI 兼容接口只取 content，避免解析 reasoning_content 造成差异
-              const content = delta?.content || ''
-              if (content) {
-                yield content
-              }
-            } catch (e) {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-}
-
-// ======================== 豆包 Web Search Provider ========================
-// 使用火山方舟 Responses API + web_search 工具实现联网搜索
+// ======================== 方舟联网搜索 Provider ========================
+// 使用火山方舟 Plan Responses API + web_search 工具实现联网搜索。
+// baseUrl = config.ai.ark.planBaseUrl，请求路径 /responses
+// （即 https://ark.cn-beijing.volces.com/api/plan/responses），Bearer 认证用 config.ai.ark.apiKey。
 class DoubaoWebSearchProvider {
   constructor(providerConfig = {}) {
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || 'https://ark.cn-beijing.volces.com/api/v3'
+    this.apiKey = providerConfig.apiKey || config.ai.ark.apiKey || ''
+    this.baseUrl = providerConfig.baseUrl || config.ai.ark.planBaseUrl
   }
 
   buildInput(messages) {
