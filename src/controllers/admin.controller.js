@@ -824,14 +824,14 @@ async function testProvider(ctx) {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: 'doubao-seed-1-6-thinking-250715',
+        model: 'doubao-seed-2.0-pro',
         messages: [{ role: 'user', content: 'ping' }],
         max_tokens: 1,
         stream: false
       })
     })
 
-    // 2xx（含 200）视为连通 + 鉴权通过；4xx 中 401/403 为鉴权问题，其余多为参数/模型问题，均判连通但报错
+    // 仅 2xx 视为连通 + 鉴权通过；401/403 为鉴权失败，其余 4xx/5xx 均判连通失败，error 携带状态码与简要原因
     if (res.ok) {
       return success(ctx, {
         success: true,
@@ -840,11 +840,13 @@ async function testProvider(ctx) {
     }
 
     const text = await res.text()
-    const ok = res.status !== 401 && res.status !== 403
+    const reason = (res.status === 401 || res.status === 403)
+      ? '鉴权失败（API Key 无效或权限不足）'
+      : (text || res.statusText || '请求失败').slice(0, 200)
     return success(ctx, {
-      success: ok,
+      success: false,
       latency: Date.now() - start,
-      error: `HTTP ${res.status} ${text || res.statusText || '请求失败'}`
+      error: `HTTP ${res.status} ${reason}`
     })
   } catch (e) {
     return success(ctx, {

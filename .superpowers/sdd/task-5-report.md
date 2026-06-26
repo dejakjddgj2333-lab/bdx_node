@@ -65,3 +65,67 @@
 3. **db-init.js:158 种子数据仍为 doubao 占位**：image_models 建表初始 INSERT 写的是 `('豆包文生图','doubao','your-doubao-endpoint-id',...)`，属 Task 4 迁移脚本范围。线上表已存在则跳过不影响功能，但种子数据未更新为方舟。建议 Task 4 范围跟进或在阶段一收尾时补迁移脚本（本次未动，因超出本任务文件范围）。
 4. **ImageModelConfig.vue 仍加载 getProviderPresets 但未用预设数据**：Task 4 留下，provider 已硬编码 ark、表单不依赖预设数据。无害加载，未清理以减少改动面；如需整洁可后续移除。
 5. **testProvider 的 model 字段硬编码** `doubao-seed-1-6-thinking-250715`：用于连通测试的模型 ID。若该模型在方舟 Plan 不可用，测试会因参数错误返回非 2xx（但仍能区分鉴权与连通）。更稳妥可从 ai_models 默认模型读取，但当前实现已满足"测方舟连通"需求。
+
+## 修复 I-1
+
+> 针对审阅发现的 Important 缺陷 I-1（testProvider 硬编码无效模型 + 前端忽略 error 致测试误导）。commit `77a6048`。
+
+### 改了哪些行
+
+- **后端** `src/controllers/admin.controller.js` testProvider 函数（约 827 行 model 字段、834-848 行连通判定）：1 文件，+7/-5。
+- **前端** `admin-web/src/views/ModelConfig.vue` handleTestProvider（519-522 行）：**确认无需改动**（见下"前端确认"）。
+
+### 后端改动（改后代码）
+
+1. 连通测试硬编码模型 `doubao-seed-1-6-thinking-250715`（不在方舟 11 模型清单）→ `doubao-seed-2.0-pro`（清单内 is_default=TRUE 默认模型）。
+2. 连通判定逻辑修正：原 `const ok = res.status !== 401 && res.status !== 403`（非 401/403 即误判 `success:true`）→ **仅 2xx 才 `success:true`**；401/403 与其他 4xx/5xx 一律 `success:false`，error 携带状态码与简要原因。
+
+```js
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'doubao-seed-2.0-pro',
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false
+      })
+    })
+
+    // 仅 2xx 视为连通 + 鉴权通过；401/403 为鉴权失败，其余 4xx/5xx 均判连通失败，error 携带状态码与简要原因
+    if (res.ok) {
+      return success(ctx, {
+        success: true,
+        latency: Date.now() - start
+      })
+    }
+
+    const text = await res.text()
+    const reason = (res.status === 401 || res.status === 403)
+      ? '鉴权失败（API Key 无效或权限不足）'
+      : (text || res.statusText || '请求失败').slice(0, 200)
+    return success(ctx, {
+      success: false,
+      latency: Date.now() - start,
+      error: `HTTP ${res.status} ${reason}`
+    })
+```
+
+### 前端确认（无需改动）
+
+数据流核对：`adminApi.testProvider` → axios response 拦截器（`src/api/request.js`）在 `code === 0` 时 `return data` → 前端 `res` 即后端 `success(ctx, {...})` 包装的 `{ success, latency, error }`，故 `res.error` 直接取到后端 error 字段。handleTestProvider 的 else 分支 `alert(\`连接失败：${res.error || '未知错误'}\`)` 已满足要求。缺陷根因在后端误判 `success:true`，后端修正后前端自动正确进入 else 分支显示 error，故前端不动。
+
+### 验证结果
+
+- `node --check src/controllers/admin.controller.js` → 通过（SYNTAX_OK）。
+- `cd admin-web && npm run build` → 通过（✓ built in 1.17s，无报错/警告）。
+- 代码自查：
+  - [x] 模型为 `doubao-seed-2.0-pro`（清单内默认模型）。
+  - [x] 仅 2xx → `success:true`（`if (res.ok)` 分支）。
+  - [x] 401/403 → `success:false`，error=`HTTP 401 鉴权失败（API Key 无效或权限不足）`。
+  - [x] 其他 4xx/5xx → `success:false`，error=`HTTP <status> <响应体截断200字符>`。
+  - [x] 前端失败分支显示 `连接失败：${res.error || '未知错误'}`（已确认正确）。
+
+### 收敛原报告 concern 5
+
+本修复同步解决了原报告「六、concerns」第 5 条「testProvider 的 model 字段硬编码 doubao-seed-1-6-thinking-250715」——已替换为清单内默认模型并修正连通判定，不再出现"参数错误返回非 2xx 仍判连通成功"的误判。
