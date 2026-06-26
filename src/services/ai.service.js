@@ -232,6 +232,8 @@ class AIService {
 
 // 收敛后：对话 Provider 统一为方舟 ArkChatProvider（Plan chat/completions）。
 // 联网搜索模型由 chatCompletion/streamChatCompletion 直接 new DoubaoWebSearchProvider，不经此工厂。
+// 收敛后：对话 Provider 统一为方舟 ArkChatProvider。name 收敛后恒为 'ark'，
+// 保留入参仅为兼容 resolveProvider 的调用签名（与 createImageProvider 一致）。
 function createProvider(name, providerConfig) {
   return new ArkChatProvider(providerConfig)
 }
@@ -381,7 +383,7 @@ class DoubaoWebSearchProvider {
 
   async chatCompletion(model, messages, options = {}) {
     if (!this.apiKey) {
-      throw new Error('豆包 API Key未配置')
+      throw new Error('火山方舟 API Key未配置')
     }
 
     const response = await fetch(`${this.baseUrl}/responses`, {
@@ -395,7 +397,7 @@ class DoubaoWebSearchProvider {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`豆包 Web Search API错误: ${error}`)
+      throw new Error(`火山方舟 Web Search API错误: ${error}`)
     }
 
     const data = await response.json()
@@ -414,7 +416,7 @@ class DoubaoWebSearchProvider {
 
   async *streamChatCompletion(model, messages, options = {}) {
     if (!this.apiKey) {
-      throw new Error('豆包 API Key未配置')
+      throw new Error('火山方舟 API Key未配置')
     }
 
     const response = await fetch(`${this.baseUrl}/responses`, {
@@ -428,7 +430,7 @@ class DoubaoWebSearchProvider {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`豆包 Web Search API错误: ${error}`)
+      throw new Error(`火山方舟 Web Search API错误: ${error}`)
     }
 
     const reader = response.body.getReader()

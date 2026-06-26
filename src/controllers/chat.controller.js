@@ -90,7 +90,7 @@ async function getImageModels(ctx) {
     provider: row.provider,
     description: row.description || '',
     isDefault: !!row.is_default,
-    supportedSizes: parseJson(row.supported_sizes, ['1024x1024']),
+    supportedSizes: parseJson(row.supported_sizes, ['1K', '2K']),
     supportedStyles: parseJson(row.supported_styles, []),
     config: parseJson(row.config, {})
   }))
@@ -169,7 +169,7 @@ async function generateImage(ctx) {
       prompt: prompt.trim(),
       negativePrompt: negativePrompt || '',
       style: style || '',
-      size: size || '1024x1024',
+      size: size || '1K',
       model: modelId
     })
   } catch (e) {
@@ -242,13 +242,28 @@ function parseJson(value, defaultValue) {
   }
 }
 
+// 尺寸档位 → 边长（正方形），与 image_models.supported_sizes 收敛后的 1K/2K 档位一致：
+// 1K→1024、2K→2048。返回 null 表示非档位，交由下方 WxH 正则兜底；size 为空最终回退 1024。
+function resolveSizeTier(size) {
+  if (typeof size !== 'string') return null
+  const s = size.trim().toUpperCase()
+  if (s === '1K') return 1024
+  if (s === '2K') return 2048
+  return null
+}
+
+// 先判档位（1K/2K），非档位再走旧 "WxH" 正则；size 为 undefined/null 时返回 1024（默认）
 function extractWidth(size = '') {
-  const match = size.match(/(\d+)x(\d+)/)
+  const tier = resolveSizeTier(size)
+  if (tier != null) return tier
+  const match = String(size || '').match(/(\d+)x(\d+)/)
   return match ? parseInt(match[1], 10) : 1024
 }
 
 function extractHeight(size = '') {
-  const match = size.match(/(\d+)x(\d+)/)
+  const tier = resolveSizeTier(size)
+  if (tier != null) return tier
+  const match = String(size || '').match(/(\d+)x(\d+)/)
   return match ? parseInt(match[2], 10) : 1024
 }
 

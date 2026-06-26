@@ -37,7 +37,7 @@ ALTER TABLE ai_models
 CREATE TABLE IF NOT EXISTS image_models (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL COMMENT '显示名称',
-    provider VARCHAR(20) NOT NULL COMMENT '厂商标识：doubao/openai/qwen 等',
+    provider VARCHAR(20) NOT NULL COMMENT '厂商标识：ark（火山方舟）',
     model_id VARCHAR(100) NOT NULL COMMENT '上游模型 ID',
     description TEXT COMMENT '描述',
     is_active BOOLEAN DEFAULT TRUE,
@@ -93,7 +93,7 @@ ON DUPLICATE KEY UPDATE
 -- 1.3 ai_models：清旧厂商 + 方舟旧行
 --     ai_models 无 UNIQUE 约束（model_id 不唯一），先删后插保证重跑幂等
 DELETE FROM ai_models
-    WHERE provider IN ('deepseek','qwen','claude','doubao','moonshot','qianfan','zhipu','xinghuo','minimax','ark');
+    WHERE provider IN ('deepseek','qwen','claude','doubao','openai','moonshot','qianfan','zhipu','xinghuo','minimax','ark');
 
 -- 1.4 ai_models：插入 11 个方舟 Plan 对话模型
 --     全部 provider='ark'、is_active=TRUE、supports_vision=FALSE、max_tokens=8192

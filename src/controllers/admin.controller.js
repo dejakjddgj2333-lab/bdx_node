@@ -598,13 +598,17 @@ async function rebuildEmbedding(ctx) {
       return error(ctx, `向量数量(${vectors.length})与分块数量(${chunks.length})不一致`, 500)
     }
 
-    for (let i = 0; i < chunks.length; i++) {
-      const vec = vectors[i] || []
-      await db.update(
-        'UPDATE document_chunks SET embedding = ?, embedding_dim = ? WHERE id = ?',
-        [JSON.stringify(vec), vec.length, chunks[i].id]
-      )
-    }
+    // 事务包裹逐块 UPDATE：中途失败整体回滚，保持旧向量，避免新旧向量混合污染检索
+    // （embed 阶段已在事务外完成，确保全部向量就绪后才开始回写）
+    await db.transaction(async (conn) => {
+      for (let i = 0; i < chunks.length; i++) {
+        const vec = vectors[i] || []
+        await conn.execute(
+          'UPDATE document_chunks SET embedding = ?, embedding_dim = ? WHERE id = ?',
+          [JSON.stringify(vec), vec.length, chunks[i].id]
+        )
+      }
+    })
 
     await logAdminAction(ctx, 'rebuild_embedding', 'documents', id, {
       model: embeddingService.EMBEDDING_MODEL,

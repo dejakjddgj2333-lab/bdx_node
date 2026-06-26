@@ -138,7 +138,7 @@ async function initImageModels() {
       CREATE TABLE image_models (
         id BIGINT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(100) NOT NULL COMMENT '显示名称',
-        provider VARCHAR(20) NOT NULL COMMENT '厂商标识：doubao/openai/qwen 等',
+        provider VARCHAR(20) NOT NULL COMMENT '厂商标识：ark（火山方舟）',
         model_id VARCHAR(100) NOT NULL COMMENT '上游模型 ID',
         description TEXT COMMENT '描述',
         is_active BOOLEAN DEFAULT TRUE,
@@ -154,10 +154,8 @@ async function initImageModels() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `)
     await db.query(`
-      INSERT INTO image_models (name, provider, model_id, description, is_default, supported_sizes, supported_styles) VALUES
-      ('豆包文生图', 'doubao', 'your-doubao-endpoint-id', '请替换为火山方舟控制台创建的 Endpoint ID', TRUE,
-       '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]',
-       '["通用", "写实", "动漫", "油画"]')
+      INSERT INTO image_models (name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles) VALUES
+      ('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1K/2K 高清出图', TRUE, TRUE, 0, '["1K","2K"]', '["通用","写实","动漫","油画"]')
     `)
     logger.info('[DB-Init] image_models 表创建成功')
   } catch (e) {
