@@ -5,7 +5,10 @@
     </div>
 
     <GlassCard class="section">
-      <template #header>API Key 配置</template>
+      <template #header>
+        <span>API Key 配置</span>
+        <span class="section-hint">对话与图像 Provider 已收敛为火山方舟，厂商固定为 ark</span>
+      </template>
       <DataTable :columns="providerColumns" :data="providers" :loading="loading">
         <template #cell="{ column, row }">
           <span v-if="column.key === 'api_key'">
@@ -24,7 +27,7 @@
       </DataTable>
 
       <div class="table-footer">
-        <GlowButton size="sm" @click="openProviderCreate">+ 新增 Provider</GlowButton>
+        <span class="footer-hint">仅支持方舟一行，不支持新增其他厂商 Provider</span>
       </div>
     </GlassCard>
 
@@ -233,10 +236,10 @@
       <div class="edit-form">
         <div class="form-group">
           <label>厂商 *</label>
-          <select v-model="modelForm.provider" :disabled="isModelEdit" @change="onModelProviderChange">
-            <option value="">请选择</option>
-            <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
+          <select v-model="modelForm.provider" disabled @change="onModelProviderChange">
+            <option value="ark">火山方舟</option>
           </select>
+          <span class="form-hint">对话模型已收敛到火山方舟 Agent Plan，厂商固定为 ark</span>
         </div>
 
         <div class="form-group">
@@ -247,12 +250,14 @@
               size="sm"
               variant="secondary"
               :loading="remoteModelsLoading"
-              :disabled="!canFetchRemoteModels"
+              disabled
+              title="方舟 Plan 不支持远程拉取模型列表"
               @click="fetchRemoteModels"
             >
               拉取模型列表
             </GlowButton>
           </div>
+          <span class="form-hint">方舟 Plan 未提供模型列表接口，请手动填写模型 ID</span>
           <select
             v-if="remoteModels.length"
             v-model="remoteModelPick"
@@ -314,7 +319,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import adminApi from '@/api/admin'
 import GlassCard from '@/components/GlassCard.vue'
 import DataTable from '@/components/DataTable.vue'
@@ -672,7 +677,7 @@ const isModelEdit = ref(false)
 const modelForm = reactive({
   id: null,
   name: '',
-  provider: '',
+  provider: 'ark',
   model_id: '',
   description: '',
   is_active: true,
@@ -686,12 +691,6 @@ const remoteModels = ref([])
 const remoteModelsLoading = ref(false)
 const remoteModelPick = ref('')
 
-const canFetchRemoteModels = computed(() => {
-  if (!modelForm.provider || isModelEdit.value) return false
-  const row = providers.value.find(p => p.provider === modelForm.provider)
-  return row && row.hasKey
-})
-
 function onModelProviderChange() {
   remoteModels.value = []
   remoteModelPick.value = ''
@@ -701,7 +700,7 @@ function openModelCreate() {
   isModelEdit.value = false
   modelForm.id = null
   modelForm.name = ''
-  modelForm.provider = ''
+  modelForm.provider = 'ark'
   modelForm.model_id = ''
   modelForm.description = ''
   modelForm.is_active = true
@@ -823,6 +822,25 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.section-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: $text-tertiary;
+  font-weight: 400;
+}
+
+.footer-hint {
+  font-size: 12px;
+  color: $text-tertiary;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: $text-tertiary;
 }
 
 .actions {

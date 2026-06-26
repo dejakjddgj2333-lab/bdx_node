@@ -13,16 +13,7 @@ const retrievalService = require('../services/retrieval.service')
 // 阶段一收敛后对话与图像 Provider 均为 'ark'；ark.base_url 是对话用 planBaseUrl，
 // 图像 baseUrl 另取 config.ai.ark.planV3BaseUrl（见 ai.service.js ArkImageProvider），不读此字段。
 const PROVIDER_PRESETS = {
-  ark: { name: '火山方舟', base_url: 'https://ark.cn-beijing.volces.com/api/plan' },
-  deepseek: { name: 'DeepSeek', base_url: 'https://api.deepseek.com' },
-  qwen: { name: '通义千问', base_url: 'https://dashscope.aliyuncs.com' },
-  claude: { name: 'Claude', base_url: 'https://api.anthropic.com' },
-  doubao: { name: '豆包', base_url: 'https://ark.cn-beijing.volces.com/api/v3' },
-  moonshot: { name: 'Kimi', base_url: 'https://api.moonshot.cn/v1' },
-  qianfan: { name: '文心一言', base_url: 'https://qianfan.baidubce.com/v2' },
-  zhipu: { name: '智谱 GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4' },
-  xinghuo: { name: '讯飞星火', base_url: 'https://spark-api-open.xf-yun.com/v1' },
-  minimax: { name: 'MiniMax', base_url: 'https://api.minimax.chat/v1' }
+  ark: { name: '火山方舟', base_url: 'https://ark.cn-beijing.volces.com/api/plan' }
 }
 
 const { VOICE_PROVIDER_PRESETS, getVoiceProviderPreset } = require('../services/voice-call/presets')
@@ -42,20 +33,6 @@ function formatVoiceProvider(row) {
     voice_labels: preset?.voice_labels || {},
     voice_intros: preset?.voice_intros || {}
   }
-}
-
-/**
- * 获取 Provider 远程模型列表 URL
- * 各厂商 OpenAI 兼容接口的 models 端点不一致
- */
-function getRemoteModelsUrl(provider, baseUrl) {
-  if (provider === 'qwen') {
-    return `${baseUrl}/compatible-mode/v1/models`
-  }
-  if (provider === 'claude') {
-    return `${baseUrl}/v1/models`
-  }
-  return `${baseUrl}/models`
 }
 
 const { success, error } = require('../utils/response')
@@ -835,35 +812,39 @@ async function testProvider(ctx) {
 
   const start = Date.now()
   try {
-    const url = getRemoteModelsUrl(provider.provider, provider.base_url)
-    let headers = {}
-
-    if (provider.provider === 'claude') {
-      headers = {
-        'x-api-key': provider.api_key,
-        'anthropic-version': '2023-06-01'
-      }
-    } else {
-      headers = { 'Authorization': `Bearer ${provider.api_key}` }
+    // 方舟 Agent Plan 为 POST 接口（chat/completions + Bearer），无 GET 列模型端点。
+    // 连通性测试：发一个极小合法请求（max_tokens:1），能区分鉴权失败(401)、参数错误(400)与正常。
+    const url = `${provider.base_url}/chat/completions`
+    const headers = {
+      'Authorization': `Bearer ${provider.api_key}`,
+      'Content-Type': 'application/json'
     }
 
     const res = await fetch(url, {
-      method: 'GET',
-      headers
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'doubao-seed-1-6-thinking-250715',
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false
+      })
     })
 
-    if (!res.ok) {
-      const text = await res.text()
+    // 2xx（含 200）视为连通 + 鉴权通过；4xx 中 401/403 为鉴权问题，其余多为参数/模型问题，均判连通但报错
+    if (res.ok) {
       return success(ctx, {
-        success: false,
-        latency: Date.now() - start,
-        error: text || '请求失败'
+        success: true,
+        latency: Date.now() - start
       })
     }
 
+    const text = await res.text()
+    const ok = res.status !== 401 && res.status !== 403
     return success(ctx, {
-      success: true,
-      latency: Date.now() - start
+      success: ok,
+      latency: Date.now() - start,
+      error: `HTTP ${res.status} ${text || res.statusText || '请求失败'}`
     })
   } catch (e) {
     return success(ctx, {
@@ -1144,36 +1125,9 @@ async function listRemoteModels(ctx) {
     return error(ctx, '请先配置 Provider 的 API Key', 400)
   }
 
-  let url
-  let headers = {}
-
-  if (provider.provider === 'claude') {
-    url = `${provider.base_url}/v1/models`
-    headers = {
-      'x-api-key': provider.api_key,
-      'anthropic-version': '2023-06-01'
-    }
-  } else {
-    url = getRemoteModelsUrl(provider.provider, provider.base_url)
-    headers = { 'Authorization': `Bearer ${provider.api_key}` }
-  }
-
-  try {
-    const res = await fetch(url, { method: 'GET', headers })
-    if (!res.ok) {
-      const text = await res.text()
-      return error(ctx, `拉取模型列表失败: ${text || res.statusText}`, 500)
-    }
-    const data = await res.json()
-    const list = (data.data || []).map(m => ({
-      id: m.id,
-      name: m.display_name || m.id
-    }))
-    success(ctx, list)
-  } catch (e) {
-    logger.error(`[Admin] 拉取 ${provider.provider} 模型列表失败:`, e.message)
-    return error(ctx, `拉取模型列表失败: ${e.message}`, 500)
-  }
+  // 方舟 Agent Plan 为 POST 接口，未提供 GET 远程模型列表端点。
+  // 收敛后直接返回空列表，前端「拉取模型列表」按钮已禁用并提示方舟不支持。
+  success(ctx, [])
 }
 
 async function listPromptSuggestions(ctx) {
