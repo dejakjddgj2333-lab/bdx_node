@@ -61,6 +61,9 @@ export default {
   reparseDocument(id) {
     return request.post(`/documents/${id}/reparse`)
   },
+  rebuildEmbedding(id) {
+    return request.post(`/documents/${id}/rebuild-embedding`)
+  },
   updateDocument(id, data) {
     return request.put(`/documents/${id}`, data)
   },

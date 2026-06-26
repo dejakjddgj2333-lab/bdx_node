@@ -6,6 +6,7 @@ const WebSocket = require('ws')
 const config = require('../config')
 const db = require('../utils/db')
 const documentService = require('../services/document.service')
+const embeddingService = require('../services/embedding.service')
 const retrievalService = require('../services/retrieval.service')
 
 // 内置 Provider 预设（标识 / 名称 / Base URL 固定）
@@ -592,6 +593,48 @@ async function reparseDocument(ctx) {
 
   await logAdminAction(ctx, 'reparse_document', 'documents', id, null)
   success(ctx, null, '已重新加入解析队列')
+}
+
+// 重算向量：不重新解析文本，仅用当前向量模型重新生成 embedding 并回写 document_chunks
+async function rebuildEmbedding(ctx) {
+  const { id } = ctx.params
+  const doc = await db.queryOne('SELECT id FROM documents WHERE id = ?', [id])
+  if (!doc) {
+    return error(ctx, '文档不存在', 404)
+  }
+
+  const chunks = await db.query(
+    'SELECT id, content FROM document_chunks WHERE document_id = ? ORDER BY chunk_index ASC',
+    [id]
+  )
+  if (chunks.length === 0) {
+    return error(ctx, '该文档暂无分块，请先解析', 400)
+  }
+
+  try {
+    const texts = chunks.map(c => c.content || '')
+    const vectors = await embeddingService.embedTexts(texts)
+    if (vectors.length !== chunks.length) {
+      return error(ctx, `向量数量(${vectors.length})与分块数量(${chunks.length})不一致`, 500)
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      const vec = vectors[i] || []
+      await db.update(
+        'UPDATE document_chunks SET embedding = ?, embedding_dim = ? WHERE id = ?',
+        [JSON.stringify(vec), vec.length, chunks[i].id]
+      )
+    }
+
+    await logAdminAction(ctx, 'rebuild_embedding', 'documents', id, {
+      model: embeddingService.EMBEDDING_MODEL,
+      chunkCount: chunks.length
+    })
+    success(ctx, { chunkCount: chunks.length, model: embeddingService.EMBEDDING_MODEL }, '重算向量完成')
+  } catch (e) {
+    logger.error('[Admin] 重算向量失败:', e.message)
+    return error(ctx, e.message || '重算向量失败', 500)
+  }
 }
 
 // 查看文档分块
@@ -1443,6 +1486,7 @@ module.exports = {
   uploadDocument,
   deleteDocument,
   reparseDocument,
+  rebuildEmbedding,
   updateDocument,
   listDocumentChunks,
   searchKnowledgeBase,

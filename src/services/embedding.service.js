@@ -4,41 +4,41 @@ const logger = require('../utils/logger')
 
 /**
  * Embedding 服务
- * 使用通义千问 DashScope text-embedding-v4（OpenAI 兼容接口）
- * 端点：{baseUrl}/compatible-mode/v1/embeddings
+ * 使用火山方舟 Agent Plan doubao-embedding-vision（OpenAI 兼容接口）
+ * 端点：{planV3BaseUrl}/embeddings
  */
 
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-v4'
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'doubao-embedding-vision'
 const EMBEDDING_DIM = parseInt(process.env.EMBEDDING_DIM, 10) || 1024
-// DashScope 兼容接口单次最多 10 条文本
+// 方舟 embeddings 接口单次最多 10 条文本
 const BATCH_SIZE = 10
 
 /**
- * 读取通义千问 Provider 配置（优先数据库，回退 .env）
+ * 读取方舟 Provider 配置（优先数据库 api_key，回退 config.ai.ark）
+ * 注意：向量化 baseUrl 固定取 config.ai.ark.planV3BaseUrl
+ * （model_providers.base_url 存的是对话用的 planBaseUrl，不能用于 embeddings）
  */
-async function getQwenConfig() {
+async function getArkConfig() {
+  const env = config.ai.ark || {}
+  const baseUrl = env.planV3BaseUrl || 'https://ark.cn-beijing.volces.com/api/plan/v3'
   try {
     const row = await db.queryOne(
-      "SELECT api_key, base_url FROM model_providers WHERE provider = 'qwen' AND is_active = TRUE LIMIT 1"
+      "SELECT api_key FROM model_providers WHERE provider = 'ark' AND is_active = TRUE LIMIT 1"
     )
     if (row && row.api_key) {
-      return { apiKey: row.api_key, baseUrl: row.base_url || 'https://dashscope.aliyuncs.com' }
+      return { apiKey: row.api_key, baseUrl }
     }
   } catch (e) {
-    logger.error('[Embedding] 读取 qwen Provider 配置失败:', e.message)
+    logger.error('[Embedding] 读取 ark Provider 配置失败:', e.message)
   }
-  const env = config.ai.qwen || {}
-  return {
-    apiKey: env.apiKey || '',
-    baseUrl: env.baseUrl || 'https://dashscope.aliyuncs.com'
-  }
+  return { apiKey: env.apiKey || '', baseUrl }
 }
 
 /**
  * 调用一次 embeddings 接口
  */
 async function embedBatch(inputs, { apiKey, baseUrl }) {
-  const response = await fetch(`${baseUrl}/compatible-mode/v1/embeddings`, {
+  const response = await fetch(`${baseUrl}/embeddings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -71,9 +71,9 @@ async function embedBatch(inputs, { apiKey, baseUrl }) {
 async function embedTexts(texts) {
   if (!Array.isArray(texts) || texts.length === 0) return []
 
-  const cfg = await getQwenConfig()
+  const cfg = await getArkConfig()
   if (!cfg.apiKey) {
-    throw new Error('通义千问 API Key 未配置，无法生成向量。请在后台「模型配置」中配置通义千问 Key。')
+    throw new Error('方舟 API Key 未配置，无法生成向量。请在后台「模型配置」中配置方舟 Key。')
   }
 
   const results = []

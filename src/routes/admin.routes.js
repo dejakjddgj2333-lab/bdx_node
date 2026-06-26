@@ -31,6 +31,7 @@ router.post('/knowledge-bases/:id/documents', adminAuth, adminController.knowled
 router.delete('/documents/:id', adminAuth, adminController.deleteDocument)
 router.put('/documents/:id', adminAuth, adminController.updateDocument)
 router.post('/documents/:id/reparse', adminAuth, adminController.reparseDocument)
+router.post('/documents/:id/rebuild-embedding', adminAuth, adminController.rebuildEmbedding)
 router.get('/documents/:id/chunks', adminAuth, adminController.listDocumentChunks)
 
 // 模型 Provider 配置

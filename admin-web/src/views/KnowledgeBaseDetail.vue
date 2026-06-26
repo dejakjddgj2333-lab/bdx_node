@@ -42,6 +42,7 @@
               @click="openChunks(row)"
             >分块</button>
             <button class="action-btn" @click="handleReparse(row)">重新解析</button>
+            <button class="action-btn" @click="handleRebuildEmbedding(row)">重算向量</button>
             <button class="action-btn action-btn--danger" @click="handleDelete(row)">删除</button>
           </span>
           <span v-else>{{ row[column.key] }}</span>
@@ -139,7 +140,7 @@ const columns = [
   { key: 'parse_status', title: '解析状态', width: '100px', align: 'center' },
   { key: 'is_public', title: '公开', width: '70px', align: 'center' },
   { key: 'created_at', title: '上传时间', width: '150px' },
-  { key: 'actions', title: '操作', width: '200px', align: 'center' }
+  { key: 'actions', title: '操作', width: '280px', align: 'center' }
 ]
 
 const documents = ref([])
@@ -281,6 +282,17 @@ async function handleDelete(row) {
 async function handleReparse(row) {
   try {
     await adminApi.reparseDocument(row.id)
+    loadDocuments()
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+async function handleRebuildEmbedding(row) {
+  if (!confirm(`确定使用当前向量模型重新生成「${row.original_name}」的向量吗？\n（不重新解析文本，仅重算 embedding）`)) return
+  try {
+    const res = await adminApi.rebuildEmbedding(row.id)
+    alert(`重算完成，共 ${res.chunkCount} 块，模型 ${res.model}`)
     loadDocuments()
   } catch (e) {
     alert(e.message)
