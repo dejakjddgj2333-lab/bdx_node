@@ -47,16 +47,16 @@
       <div class="edit-form">
         <div class="form-group">
           <label>厂商 *</label>
-          <select v-model="form.provider">
-            <option value="">请选择</option>
-            <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
+          <select v-model="form.provider" disabled>
+            <option value="ark">火山方舟</option>
           </select>
+          <span class="form-hint">图像生成已收敛到火山方舟 Agent Plan，厂商固定为 ark</span>
         </div>
 
         <div class="form-group">
           <label>模型 ID *</label>
-          <input v-model="form.model_id" placeholder="火山方舟 Endpoint ID，如 ep-2024xxxxx-xxx" />
-          <span class="form-hint">OpenAI 兼容接口调用时使用的 model 字段</span>
+          <input v-model="form.model_id" placeholder="方舟模型 ID，如 doubao-seedream-5.0-lite" />
+          <span class="form-hint">方舟 Plan /images/generations 调用时使用的 model 字段</span>
         </div>
 
         <div class="form-group">
@@ -88,8 +88,8 @@
 
         <div class="form-group">
           <label>支持尺寸（JSON 数组）</label>
-          <input v-model="form.supported_sizes" placeholder='["1024x1024", "1536x1024"]' />
-          <span class="form-hint">每个尺寸格式为 宽x高，如 1024x1024</span>
+          <input v-model="form.supported_sizes" placeholder='["1K", "2K"]' />
+          <span class="form-hint">方舟 Plan 出图档位，如 1K / 2K（单边不超 2048）</span>
         </div>
 
         <div class="form-group">
@@ -100,8 +100,8 @@
 
         <div class="form-group">
           <label>额外配置（JSON）</label>
-          <textarea v-model="form.config" rows="3" placeholder='{"quality": "standard"}' />
-          <span class="form-hint">按厂商透传到上游接口，如 quality、response_format 等</span>
+          <textarea v-model="form.config" rows="3" placeholder='{}' />
+          <span class="form-hint">方舟 Plan 出图参数固定（output_format=png/response_format=url/watermark=false），此字段当前不透传</span>
         </div>
       </div>
 
@@ -143,13 +143,13 @@ const isEdit = ref(false)
 const form = reactive({
   id: null,
   name: '',
-  provider: 'doubao',
+  provider: 'ark',
   model_id: '',
   description: '',
   is_active: true,
   is_default: false,
   sort_order: 0,
-  supported_sizes: '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]',
+  supported_sizes: '["1K", "2K"]',
   supported_styles: '["通用", "写实", "动漫", "油画"]',
   config: '{}'
 })
@@ -206,13 +206,13 @@ function openCreate() {
   Object.assign(form, {
     id: null,
     name: '',
-    provider: 'doubao',
+    provider: 'ark',
     model_id: '',
     description: '',
     is_active: true,
     is_default: false,
     sort_order: 0,
-    supported_sizes: '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]',
+    supported_sizes: '["1K", "2K"]',
     supported_styles: '["通用", "写实", "动漫", "油画"]',
     config: '{}'
   })

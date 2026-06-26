@@ -10,7 +10,10 @@ const embeddingService = require('../services/embedding.service')
 const retrievalService = require('../services/retrieval.service')
 
 // 内置 Provider 预设（标识 / 名称 / Base URL 固定）
+// 阶段一收敛后对话与图像 Provider 均为 'ark'；ark.base_url 是对话用 planBaseUrl，
+// 图像 baseUrl 另取 config.ai.ark.planV3BaseUrl（见 ai.service.js ArkImageProvider），不读此字段。
 const PROVIDER_PRESETS = {
+  ark: { name: '火山方舟', base_url: 'https://ark.cn-beijing.volces.com/api/plan' },
   deepseek: { name: 'DeepSeek', base_url: 'https://api.deepseek.com' },
   qwen: { name: '通义千问', base_url: 'https://dashscope.aliyuncs.com' },
   claude: { name: 'Claude', base_url: 'https://api.anthropic.com' },

@@ -194,20 +194,21 @@ class AIService {
       throw new Error('绘图模型已禁用')
     }
 
+    // 图像 Provider 收敛为单一方舟；baseUrl 固定取 planV3BaseUrl（见 ArkImageProvider 构造），
+    // 不读 getProviderConfig 返回的 base_url（那是对话用的 planBaseUrl，会污染图像接口）。
     const providerConfig = await this.getProviderConfig(modelInfo.provider)
     if (!providerConfig.apiKey) {
       throw new Error(`${modelInfo.provider} API Key 未配置`)
     }
 
     const provider = createImageProvider(modelInfo.provider, providerConfig)
+    // 方舟 Plan 出图请求体固定：model/prompt/size/n/output_format/response_format/watermark；
+    // 不透传 negative_prompt/style/config（Plan 示例无这些字段）。negativePrompt/style 仅在调用层留存。
     return provider.generateImage({
       model: modelInfo.model_id,
       prompt,
-      negativePrompt,
       size,
-      style,
-      n,
-      config: modelInfo.config && typeof modelInfo.config === 'string' ? JSON.parse(modelInfo.config) : (modelInfo.config || {})
+      n
     })
   }
 
@@ -236,14 +237,9 @@ function createProvider(name, providerConfig) {
 }
 
 function createImageProvider(name, providerConfig) {
-  switch (name) {
-    case 'doubao':
-      return new DoubaoImageProvider(providerConfig)
-    case 'openai':
-      return new OpenAIImageProvider(providerConfig)
-    default:
-      return new OpenAIImageProvider(name, providerConfig)
-  }
+  // 图像 Provider 收敛为单一方舟（ArkImageProvider）。name 收敛后恒为 'ark'，
+  // 保留入参仅为兼容 generateImage 的调用签名。
+  return new ArkImageProvider(providerConfig)
 }
 
 // ======================== 方舟对话 Provider ========================
@@ -472,26 +468,30 @@ class DoubaoWebSearchProvider {
 module.exports = new AIService()
 
 // ======================== 图像生成 Provider ========================
-class OpenAIImageProvider {
+// 火山方舟 Agent Plan 文生图：接口 /images/generations，Bearer 认证用 config.ai.ark.apiKey。
+// baseUrl 固定取 config.ai.ark.planV3BaseUrl（https://ark.cn-beijing.volces.com/api/plan/v3），
+// 不依赖 model_providers.base_url（该字段存对话用 planBaseUrl，会污染图像接口，参考 embedding.service）。
+// 请求体固定：model/prompt/size(档位 1K/2K)/n/output_format(png)/response_format(url)/watermark(false)。
+class ArkImageProvider {
   constructor(providerConfig = {}) {
-    this.apiKey = providerConfig.apiKey || ''
-    this.baseUrl = providerConfig.baseUrl || 'https://api.openai.com/v1'
+    this.apiKey = providerConfig.apiKey || config.ai.ark.apiKey || ''
+    this.baseUrl = config.ai.ark.planV3BaseUrl
   }
 
-  async generateImage({ model, prompt, negativePrompt, size = '1024x1024', style, n = 1, config = {} }) {
+  async generateImage({ model, prompt, size = '1K', n = 1 }) {
     if (!this.apiKey) {
-      throw new Error('API Key 未配置')
+      throw new Error('火山方舟 API Key 未配置')
     }
 
     const body = {
       model,
       prompt,
-      n,
       size,
-      response_format: 'url'
+      n,
+      output_format: 'png',
+      response_format: 'url',
+      watermark: false
     }
-    if (style) body.style = style
-    if (negativePrompt) body.negative_prompt = negativePrompt
 
     const response = await fetch(`${this.baseUrl}/images/generations`, {
       method: 'POST',
@@ -504,51 +504,7 @@ class OpenAIImageProvider {
 
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`图像生成失败: ${error}`)
-    }
-
-    const data = await response.json()
-    const images = (data.data || []).map(item => item.url).filter(Boolean)
-    return { images, revisedPrompt: data.data?.[0]?.revised_prompt || prompt }
-  }
-}
-
-class DoubaoImageProvider extends OpenAIImageProvider {
-  constructor(providerConfig = {}) {
-    super(providerConfig)
-    this.baseUrl = providerConfig.baseUrl || 'https://ark.cn-beijing.volces.com/api/v3'
-  }
-
-  async generateImage({ model, prompt, negativePrompt, size = '1024x1024', style, n = 1, config = {} }) {
-    if (!this.apiKey) {
-      throw new Error('豆包 API Key 未配置')
-    }
-
-    // 豆包图像生成支持 OpenAI 兼容接口 /images/generations
-    const body = {
-      model,
-      prompt,
-      n,
-      size,
-      response_format: 'url'
-    }
-
-    // 部分豆包模型支持 quality/response_format，透传 config
-    if (config.quality) body.quality = config.quality
-    if (negativePrompt) body.negative_prompt = negativePrompt
-
-    const response = await fetch(`${this.baseUrl}/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify(body)
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`豆包图像生成失败: ${error}`)
+      throw new Error(`火山方舟图像生成失败: ${error}`)
     }
 
     const data = await response.json()
