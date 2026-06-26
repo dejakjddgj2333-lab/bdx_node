@@ -145,8 +145,8 @@ INSERT INTO system_settings (`key`, `value`, `description`) VALUES
 ('image_generation_enabled', 'true', '是否启用图片生成功能')
 ON DUPLICATE KEY UPDATE `key` = `key`;
 
-INSERT INTO image_models (name, provider, model_id, description, is_default, supported_sizes, supported_styles) VALUES
-('豆包文生图', 'doubao', 'your-doubao-endpoint-id', '请替换为火山方舟控制台创建的 Endpoint ID', TRUE, '["1024x1024", "1536x1024", "1024x1536", "2048x2048"]', '["通用", "写实", "动漫", "油画"]')
+INSERT INTO image_models (name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles) VALUES
+('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1K/2K 高清出图', TRUE, TRUE, 0, '["1K","2K"]', '["通用","写实","动漫","油画"]')
 ON DUPLICATE KEY UPDATE name = name;
 
 CREATE TABLE IF NOT EXISTS ai_models (
@@ -160,14 +160,23 @@ CREATE TABLE IF NOT EXISTS ai_models (
     supports_vision BOOLEAN DEFAULT FALSE,
     supports_web_search BOOLEAN DEFAULT FALSE,
     max_tokens INT DEFAULT 4096,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO ai_models (name, provider, model_id, description, is_default, max_tokens) VALUES
-('DeepSeek V4 Pro', 'deepseek', 'deepseek-v4-pro', 'DeepSeek最新对话模型，支持联网搜索', TRUE, 8192),
-('DeepSeek V4 Flash', 'deepseek', 'deepseek-v4-flash', 'DeepSeek轻量快速模型，支持联网搜索', FALSE, 8192),
-('DeepSeek V3', 'deepseek', 'deepseek-chat', 'DeepSeek对话模型，综合能力强', FALSE, 8192),
-('DeepSeek R1', 'deepseek', 'deepseek-reasoner', 'DeepSeek推理模型，擅长逻辑推理和编程', FALSE, 8192)
+INSERT INTO ai_models (name, provider, model_id, description, is_default, is_active, supports_vision, supports_web_search, max_tokens, sort_order) VALUES
+('豆包 Seed 2.0 Pro', 'ark', 'doubao-seed-2.0-pro',  '字节豆包旗舰对话模型，综合能力强，支持联网搜索', TRUE,  TRUE, FALSE, TRUE,  8192, 0),
+('豆包 Seed 2.0 Code','ark', 'doubao-seed-2.0-code', '豆包编程专用模型，擅长代码生成与调试',        FALSE, TRUE, FALSE, FALSE, 8192, 1),
+('豆包 Seed 2.0 Lite','ark', 'doubao-seed-2.0-lite', '豆包轻量版本，响应快、成本低',               FALSE, TRUE, FALSE, FALSE, 8192, 2),
+('豆包 Seed 2.0 Mini','ark', 'doubao-seed-2.0-mini', '豆包最小体积版本，适合轻量场景',             FALSE, TRUE, FALSE, FALSE, 8192, 3),
+('GLM-5.2',           'ark', 'glm-5.2',              '智谱 GLM 5.2 通用对话模型',                   FALSE, TRUE, FALSE, FALSE, 8192, 4),
+('Kimi K2.7 Code',    'ark', 'kimi-k2.7-code',       '月之暗面 Kimi K2.7 编程增强模型',             FALSE, TRUE, FALSE, FALSE, 8192, 5),
+('DeepSeek V4 Pro',   'ark', 'deepseek-v4-pro',      'DeepSeek V4 Pro 旗舰对话模型',                FALSE, TRUE, FALSE, FALSE, 8192, 6),
+('DeepSeek V4 Flash', 'ark', 'deepseek-v4-flash',    'DeepSeek V4 Flash 轻量快速模型',              FALSE, TRUE, FALSE, FALSE, 8192, 7),
+('MiniMax M3',        'ark', 'minimax-m3',           'MiniMax M3 通用对话模型',                     FALSE, TRUE, FALSE, FALSE, 8192, 8),
+('MiniMax M2.7',      'ark', 'minimax-m2.7',         'MiniMax M2.7 对话模型',                       FALSE, TRUE, FALSE, FALSE, 8192, 9),
+('Kimi K2.6',         'ark', 'kimi-k2.6',            '月之暗面 Kimi K2.6 长文本对话模型',           FALSE, TRUE, FALSE, FALSE, 8192, 10)
 ON DUPLICATE KEY UPDATE name = name;
 
 INSERT INTO agents (name, description, system_prompt, welcome_message, category, is_official, is_public) VALUES
@@ -231,6 +240,16 @@ CREATE TABLE IF NOT EXISTS model_providers (
     INDEX idx_provider (provider),
     INDEX idx_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 厂商种子：方舟（api_key 留空，待后台或 .env 填充；ON DUPLICATE 不覆盖已填 key）
+INSERT INTO model_providers (provider, name, api_key, base_url, is_active, sort_order) VALUES
+    ('ark', '火山方舟', '', 'https://ark.cn-beijing.volces.com/api/plan', TRUE, 0)
+ON DUPLICATE KEY UPDATE
+    name       = VALUES(name),
+    base_url   = VALUES(base_url),
+    is_active  = VALUES(is_active),
+    sort_order = VALUES(sort_order),
+    api_key    = api_key;
 
 ALTER TABLE ai_models
     ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 0 AFTER max_tokens,
