@@ -52,6 +52,14 @@ router.delete('/voice-providers/:id', adminAuth, adminController.deleteVoiceProv
 router.post('/voice-providers/:id/current', adminAuth, adminController.setCurrentVoiceProvider)
 router.post('/voice-providers/:id/test', adminAuth, adminController.testVoiceProvider)
 
+// TTS 音色库管理
+router.get('/tts-voices', adminAuth, adminController.listTtsVoices)
+router.post('/tts-voices', adminAuth, adminController.createTtsVoice)
+router.put('/tts-voices/:id', adminAuth, adminController.updateTtsVoice)
+router.delete('/tts-voices/:id', adminAuth, adminController.deleteTtsVoice)
+router.post('/tts-voices/:id/default', adminAuth, adminController.setDefaultTtsVoice)
+router.post('/tts-voices/sync', adminAuth, adminController.syncTtsVoices)
+
 // 模型管理
 router.get('/models', adminAuth, adminController.listModels)
 router.post('/models', adminAuth, adminController.createModel)

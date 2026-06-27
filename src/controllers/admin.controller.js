@@ -1358,21 +1358,6 @@ async function setCurrentVoiceProvider(ctx) {
   success(ctx, null, '已设为当前语音厂商')
 }
 
-function getVoiceProviderWsUrl(provider, preset, row) {
-  const model = row.realtime_model || preset.realtime_model
-  if (provider === 'qwen') {
-    return `${row.base_url || preset.base_url}/api-ws/v1/realtime?model=${model}`
-  }
-  if (provider === 'openai') {
-    return `${row.base_url || preset.base_url}/v1/realtime?model=${model}`
-  }
-  if (provider === 'gemini') {
-    return `${row.base_url || preset.base_url}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${row.api_key}`
-  }
-  // 豆包实时语音 URL 需根据实际文档调整
-  return `${row.base_url || preset.base_url}/realtime?model=${model}`
-}
-
 async function testVoiceProvider(ctx) {
   const { id } = ctx.params
   const row = await db.queryOne('SELECT * FROM voice_providers WHERE id = ?', [id])
@@ -1386,49 +1371,151 @@ async function testVoiceProvider(ctx) {
     return error(ctx, '请先配置 API Key', 400)
   }
 
-  const preset = getVoiceProviderPreset(row.provider)
-  if (!preset) {
-    return error(ctx, '未知语音厂商', 400)
-  }
-
-  const url = getVoiceProviderWsUrl(row.provider, preset, row)
+  // 阶段二：测试方舟 TTS WS 连通（X-Api-Key 认证）
+  const TTS_URL = 'wss://openspeech.bytedance.com/api/v3/plan/tts/bidirection'
   const start = Date.now()
 
   try {
-    const headers = {}
-    if (row.provider !== 'gemini') {
-      headers.Authorization = `Bearer ${row.api_key}`
-    }
-
     await new Promise((resolve, reject) => {
-      const ws = new WebSocket(url, { headers })
-      const timeout = setTimeout(() => {
-        ws.terminate()
-        reject(new Error('连接超时'))
-      }, 10000)
-
-      ws.once('open', () => {
-        clearTimeout(timeout)
-        ws.close()
-        resolve()
+      const ws = new WebSocket(TTS_URL, {
+        headers: {
+          'X-Api-Key': row.api_key,
+          'X-Api-Resource-Id': 'seed-tts-2.0',
+          'X-Api-Connect-Id': require('uuid').v4(),
+          'X-Control-Require-Usage-Tokens-Return': '*'
+        }
       })
-
-      ws.once('error', (err) => {
-        clearTimeout(timeout)
-        reject(err)
-      })
+      const timeout = setTimeout(() => { ws.terminate(); reject(new Error('连接超时')) }, 10000)
+      ws.once('open', () => { clearTimeout(timeout); ws.close(); resolve() })
+      ws.once('error', (err) => { clearTimeout(timeout); reject(err) })
     })
 
-    return success(ctx, {
-      success: true,
-      latency: Date.now() - start
-    })
+    return success(ctx, { success: true, latency: Date.now() - start })
   } catch (e) {
-    return success(ctx, {
-      success: false,
-      latency: Date.now() - start,
-      error: e.message
+    return success(ctx, { success: false, latency: Date.now() - start, error: e.message })
+  }
+}
+
+// ======================== TTS 音色库管理 ========================
+
+async function listTtsVoices(ctx) {
+  const rows = await db.query(
+    'SELECT id, speaker, name, gender, age, description, avatar, trial_url, emoji, is_exposed, is_default, sort_order, is_active, created_at FROM tts_voices ORDER BY sort_order ASC, id ASC'
+  )
+  success(ctx, rows)
+}
+
+async function createTtsVoice(ctx) {
+  const { speaker, name, gender, description, trial_url, is_exposed, is_default, sort_order, is_active } = ctx.request.body || {}
+  if (!speaker || !name) return error(ctx, 'speaker 和 name 必填', 400)
+  try {
+    const id = await db.insert(
+      `INSERT INTO tts_voices (speaker, name, gender, description, trial_url, is_exposed, is_default, sort_order, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [speaker, name, gender || null, description || null, trial_url || null,
+       !!is_exposed, !!is_default, sort_order || 0, is_active !== false]
+    )
+    if (is_default) await db.update('UPDATE tts_voices SET is_default = FALSE WHERE id <> ?', [id])
+    await logAdminAction(ctx, 'create_tts_voice', 'tts_voices', id, ctx.request.body)
+    success(ctx, { id }, '创建成功')
+  } catch (e) {
+    return error(ctx, e.code === 'ER_DUP_ENTRY' ? 'speaker 已存在' : e.message, 400)
+  }
+}
+
+async function updateTtsVoice(ctx) {
+  const { id } = ctx.params
+  const { name, gender, description, trial_url, is_exposed, is_default, sort_order, is_active } = ctx.request.body || {}
+  const existing = await db.queryOne('SELECT id FROM tts_voices WHERE id = ?', [id])
+  if (!existing) return error(ctx, '音色不存在', 404)
+
+  const updates = []
+  const values = []
+  if (name !== undefined) { updates.push('name = ?'); values.push(name) }
+  if (gender !== undefined) { updates.push('gender = ?'); values.push(gender) }
+  if (description !== undefined) { updates.push('description = ?'); values.push(description) }
+  if (trial_url !== undefined) { updates.push('trial_url = ?'); values.push(trial_url) }
+  if (is_exposed !== undefined) { updates.push('is_exposed = ?'); values.push(!!is_exposed) }
+  if (is_default !== undefined) { updates.push('is_default = ?'); values.push(!!is_default) }
+  if (sort_order !== undefined) { updates.push('sort_order = ?'); values.push(sort_order) }
+  if (is_active !== undefined) { updates.push('is_active = ?'); values.push(is_active !== false) }
+  if (!updates.length) return success(ctx, null, '无需更新')
+
+  values.push(id)
+  await db.update(`UPDATE tts_voices SET ${updates.join(', ')} WHERE id = ?`, values)
+  if (is_default) await db.update('UPDATE tts_voices SET is_default = FALSE WHERE id <> ?', [id])
+  await logAdminAction(ctx, 'update_tts_voice', 'tts_voices', id, ctx.request.body)
+  success(ctx, null, '更新成功')
+}
+
+async function deleteTtsVoice(ctx) {
+  const { id } = ctx.params
+  await db.update('DELETE FROM tts_voices WHERE id = ?', [id])
+  await logAdminAction(ctx, 'delete_tts_voice', 'tts_voices', id, null)
+  success(ctx, null, '删除成功')
+}
+
+async function setDefaultTtsVoice(ctx) {
+  const { id } = ctx.params
+  const existing = await db.queryOne('SELECT id FROM tts_voices WHERE id = ? AND is_active = TRUE', [id])
+  if (!existing) return error(ctx, '音色不存在或已禁用', 404)
+  await db.transaction(async (conn) => {
+    await conn.execute('UPDATE tts_voices SET is_default = FALSE')
+    await conn.execute('UPDATE tts_voices SET is_default = TRUE WHERE id = ?', [id])
+  })
+  await logAdminAction(ctx, 'set_default_tts_voice', 'tts_voices', id, null)
+  success(ctx, null, '已设为默认')
+}
+
+/**
+ * 同步方舟 ListSpeakers 全量音色（需方舟 API Key + ListSpeakers 接口权限）
+ * 调用方舟 ListSpeakers 接口拉取全量，upsert 到 tts_voices
+ */
+async function syncTtsVoices(ctx) {
+  const row = await db.queryOne("SELECT api_key FROM voice_providers WHERE provider = 'ark' AND is_active = TRUE LIMIT 1")
+  const apiKey = (row && row.api_key) || config.ai.ark.apiKey
+  if (!apiKey) return error(ctx, '未配置方舟 API Key', 400)
+
+  const { Action, Version } = { Action: 'ListSpeakers', Version: '2025-05-20' }
+  const start = Date.now()
+
+  try {
+    // 方舟 ListSpeakers 接口（火山引擎语音 SaaS）
+    const resp = await fetch('https://openspeech.bytedance.com/api/v1/tts/list_speakers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey,
+        'X-Api-Resource-Id': 'volc.megatts.voiceclone'
+      },
+      body: JSON.stringify({ offset: 0, limit: 500, filter: { voice_type: ['seed-tts-2.0'] } })
     })
+
+    if (!resp.ok) {
+      const t = await resp.text()
+      return error(ctx, `同步失败(HTTP ${resp.status}): ${t}`, 502)
+    }
+    const data = await resp.json()
+    const speakers = (data.Result && data.Result.Speakers) || []
+
+    let count = 0
+    for (const s of speakers) {
+      if (!s.VoiceType) continue
+      await db.query(
+        `INSERT INTO tts_voices (speaker, name, gender, description, trial_url, is_active)
+         VALUES (?, ?, ?, ?, ?, TRUE)
+         ON DUPLICATE KEY UPDATE
+           name = VALUES(name), gender = VALUES(gender),
+           description = VALUES(description), trial_url = VALUES(trial_url)`,
+        [s.VoiceType, s.Name || s.VoiceType, s.Gender || null, s.Description || null, s.TrialURL || null]
+      )
+      count++
+    }
+    await logAdminAction(ctx, 'sync_tts_voices', 'tts_voices', null, { count, latency: Date.now() - start })
+    success(ctx, { count, latency: Date.now() - start }, `同步完成，共 ${count} 个音色`)
+  } catch (e) {
+    logger.error('[Admin] 同步音色失败:', e.message)
+    return error(ctx, '同步失败: ' + e.message, 500)
   }
 }
 
@@ -1481,5 +1568,11 @@ module.exports = {
   updateVoiceProvider,
   deleteVoiceProvider,
   setCurrentVoiceProvider,
-  testVoiceProvider
+  testVoiceProvider,
+  listTtsVoices,
+  createTtsVoice,
+  updateTtsVoice,
+  deleteTtsVoice,
+  setDefaultTtsVoice,
+  syncTtsVoices
 }

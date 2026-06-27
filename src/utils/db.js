@@ -3,10 +3,10 @@ const config = require('../config')
 const logger = require('./logger')
 
 const pool = mysql.createPool({
-  host: '34.21.227.69',
+  host: '42.121.164.56',
   port: 3306,
   user: 'bdx',
-  password: 'SJKx52snMNpGE4ij',
+  password: 'h3kZJk4mbrxSMJ5k',
   database: 'bdx',
   charset: 'utf8mb4',
   waitForConnections: true,

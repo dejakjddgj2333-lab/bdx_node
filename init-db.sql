@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS image_models (
     is_active BOOLEAN DEFAULT TRUE,
     is_default BOOLEAN DEFAULT FALSE,
     sort_order INT DEFAULT 0,
-    supported_sizes JSON DEFAULT NULL COMMENT '支持尺寸档位数组，如 ["1K","2K"]',
+    supported_sizes JSON DEFAULT NULL COMMENT '支持尺寸档位数组，如 ["1920x1920","2048x2048","1080x1920","1920x1080"]',
     supported_styles JSON DEFAULT NULL COMMENT '支持风格数组',
     config JSON DEFAULT NULL COMMENT '额外配置，如 steps/quality',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -146,7 +146,7 @@ INSERT INTO system_settings (`key`, `value`, `description`) VALUES
 ON DUPLICATE KEY UPDATE `key` = `key`;
 
 INSERT INTO image_models (name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles) VALUES
-('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1K/2K 高清出图', TRUE, TRUE, 0, '["1K","2K"]', '["通用","写实","动漫","油画"]')
+('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1920x1920/2048x2048 等高清出图', TRUE, TRUE, 0, '["1920x1920","2048x2048","1080x1920","1920x1080"]', '["通用","写实","动漫","油画"]')
 ON DUPLICATE KEY UPDATE name = name;
 
 CREATE TABLE IF NOT EXISTS ai_models (

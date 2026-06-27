@@ -90,7 +90,7 @@ async function getImageModels(ctx) {
     provider: row.provider,
     description: row.description || '',
     isDefault: !!row.is_default,
-    supportedSizes: parseJson(row.supported_sizes, ['1K', '2K']),
+    supportedSizes: parseJson(row.supported_sizes, ['1920x1920', '2048x2048', '1080x1920', '1920x1080']),
     supportedStyles: parseJson(row.supported_styles, []),
     config: parseJson(row.config, {})
   }))
@@ -169,7 +169,7 @@ async function generateImage(ctx) {
       prompt: prompt.trim(),
       negativePrompt: negativePrompt || '',
       style: style || '',
-      size: size || '1K',
+      size: size || '1920x1920',
       model: modelId
     })
   } catch (e) {
@@ -242,13 +242,14 @@ function parseJson(value, defaultValue) {
   }
 }
 
-// 尺寸档位 → 边长（正方形），与 image_models.supported_sizes 收敛后的 1K/2K 档位一致：
-// 1K→1024、2K→2048。返回 null 表示非档位，交由下方 WxH 正则兜底；size 为空最终回退 1024。
+// 尺寸档位 → 边长（正方形），方舟支持的档位：2k/3k/4k（小写）。
+// 2k→2048、3k→3072、4k→4096。返回 null 表示非档位，交由下方 WxH 正则兜底；size 为空最终回退 1024。
 function resolveSizeTier(size) {
   if (typeof size !== 'string') return null
-  const s = size.trim().toUpperCase()
-  if (s === '1K') return 1024
-  if (s === '2K') return 2048
+  const s = size.trim().toLowerCase()
+  if (s === '2k') return 2048
+  if (s === '3k') return 3072
+  if (s === '4k') return 4096
   return null
 }
 

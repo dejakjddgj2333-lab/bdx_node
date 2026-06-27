@@ -480,7 +480,7 @@ class ArkImageProvider {
     this.baseUrl = config.ai.ark.planV3BaseUrl
   }
 
-  async generateImage({ model, prompt, size = '1K', n = 1 }) {
+  async generateImage({ model, prompt, size = '1920x1920', n = 1 }) {
     if (!this.apiKey) {
       throw new Error('火山方舟 API Key 未配置')
     }

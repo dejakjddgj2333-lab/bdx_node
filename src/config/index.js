@@ -29,7 +29,7 @@ module.exports = {
     // 火山方舟 Agent Plan（阶段一：所有 AI 能力收敛到此单入口）
     ark: {
       apiKey: process.env.ARK_API_KEY || '',
-      planBaseUrl: process.env.ARK_PLAN_BASE_URL || 'https://ark.cn-beijing.volces.com/api/plan',
+      planBaseUrl: process.env.ARK_PLAN_BASE_URL || 'https://ark.cn-beijing.volces.com/api/plan/v3',
       planV3BaseUrl: process.env.ARK_PLAN_V3_BASE_URL || 'https://ark.cn-beijing.volces.com/api/plan/v3'
     },
     // qwen 空壳：阶段二语音重构前仍被 src/services/voice-call/presets.js 第89行引用，勿删

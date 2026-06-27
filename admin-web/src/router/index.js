@@ -50,6 +50,12 @@ const routes = [
         meta: { title: '绘图模型', icon: 'image' }
       },
       {
+        path: '/voice',
+        name: 'VoiceConfig',
+        component: () => import('@/views/VoiceConfig.vue'),
+        meta: { title: '语音音色', icon: 'voice' }
+      },
+      {
         path: '/system-settings',
         name: 'SystemSettings',
         component: () => import('@/views/SystemSettings.vue'),

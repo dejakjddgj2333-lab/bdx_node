@@ -120,6 +120,26 @@ export default {
     return request.post(`/voice-providers/${id}/test`)
   },
 
+  // TTS 音色库
+  getTtsVoices() {
+    return request.get('/tts-voices')
+  },
+  createTtsVoice(data) {
+    return request.post('/tts-voices', data)
+  },
+  updateTtsVoice(id, data) {
+    return request.put(`/tts-voices/${id}`, data)
+  },
+  deleteTtsVoice(id) {
+    return request.delete(`/tts-voices/${id}`)
+  },
+  setDefaultTtsVoice(id) {
+    return request.post(`/tts-voices/${id}/default`)
+  },
+  syncTtsVoices() {
+    return request.post('/tts-voices/sync')
+  },
+
   // 模型管理
   getModels() {
     return request.get('/models')

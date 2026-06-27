@@ -28,10 +28,23 @@ CREATE TABLE IF NOT EXISTS ai_models (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 补 sort_order / updated_at（旧库可能缺失；新库已具备，IF NOT EXISTS 为 no-op）
-ALTER TABLE ai_models
-    ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 0 AFTER max_tokens,
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+-- 补 sort_order / updated_at（旧库可能缺失；新库已具备，已存在则跳过）
+-- 用 information_schema 检查以兼容不支持 ADD COLUMN IF NOT EXISTS 的 MySQL 版本
+SET @s := (SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'sort_order') = 0,
+  'ALTER TABLE ai_models ADD COLUMN sort_order INT DEFAULT 0 AFTER max_tokens',
+  'SELECT 1'
+));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @s := (SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ai_models' AND COLUMN_NAME = 'updated_at') = 0,
+  'ALTER TABLE ai_models ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+  'SELECT 1'
+));
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- 绘图模型表
 CREATE TABLE IF NOT EXISTS image_models (
@@ -117,11 +130,11 @@ VALUES
 DELETE FROM image_models
     WHERE provider IN ('doubao','openai','qwen','ark');
 
--- 1.6 image_models：插入方舟豆包文生图（默认，1K/2K）
+-- 1.6 image_models：插入方舟豆包文生图（默认，512x512/1024x1024等）
 INSERT INTO image_models
     (name, provider, model_id, description, is_active, is_default, sort_order, supported_sizes, supported_styles)
 VALUES
-    ('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1K/2K 高清出图', TRUE, TRUE, 0, '["1K","2K"]', '["通用","写实","动漫","油画"]');
+    ('豆包文生图', 'ark', 'doubao-seedream-5.0-lite', '火山方舟豆包文生图模型，支持 1920x1920/2048x2048 等高清出图', TRUE, TRUE, 0, '["1920x1920","2048x2048","1080x1920","1920x1080"]', '["通用","写实","动漫","油画"]');
 
 COMMIT;
 
@@ -129,7 +142,7 @@ COMMIT;
 -- 迁移完成说明
 -- - model_providers：仅剩 ark 行；旧厂商已清；api_key 留空待后台/.env 填充
 -- - ai_models：11 个方舟 Plan 模型；默认 doubao-seed-2.0-pro；仅 pro 开联网搜索
--- - image_models：默认豆包文生图（doubao-seedream-5.0-lite，1K/2K）
+-- - image_models：默认豆包文生图（doubao-seedream-5.0-lite，512x512/1024x1024等）
 -- - voice_providers：未改动（阶段二语音重构）
 -- - document_chunks：未改动（后台逐个重算向量，Task 3 处理）
 -- ========================================================
